@@ -19,6 +19,13 @@ export interface RunOptions {
   env?: Record<string, string>
   /** Read-only commands skip optional locks so they never contend with the user's tools */
   readOnly?: boolean
+  /**
+   * Treat pathspecs literally (default true). Must be false for `stash push -u` /
+   * `--keep-index`: newer Git passes `:/` to an internal `clean`/`checkout`, and
+   * with literal pathspecs that magic root pathspec is not expanded, so untracked
+   * files are saved but not removed from the worktree.
+   */
+  literalPathspecs?: boolean
   /** Stop reading stdout after this many bytes (the process is killed) */
   maxBytes?: number
   /** Return raw stdout bytes instead of text */
@@ -188,8 +195,6 @@ function runGit(args: string[], opts: RunOptions): Promise<RunResult> {
     GIT_TERMINAL_PROMPT: '0',
     LC_ALL: 'C',
     LANGUAGE: 'C',
-    // Paths from the UI are always literal (no glob/pathspec magic), so names like "a[1].txt" work.
-    GIT_LITERAL_PATHSPECS: '1',
     GIT_PAGER: 'cat',
     PAGER: 'cat',
     // ":" is recognised by Git as "do not launch an editor" and keeps the prepared message.
@@ -197,6 +202,10 @@ function runGit(args: string[], opts: RunOptions): Promise<RunResult> {
     ...(opts.readOnly ? { GIT_OPTIONAL_LOCKS: '0' } : {}),
     ...opts.env
   }
+  // Paths from the UI are always literal (no glob/pathspec magic), so names like "a[1].txt" work.
+  // Callers can opt out (see RunOptions.literalPathspecs).
+  if (opts.literalPathspecs === false) delete env['GIT_LITERAL_PATHSPECS']
+  else env['GIT_LITERAL_PATHSPECS'] = '1'
   delete env['ELECTRON_RUN_AS_NODE']
   if (opts.env?.['ELECTRON_RUN_AS_NODE'])
     env['ELECTRON_RUN_AS_NODE'] = opts.env['ELECTRON_RUN_AS_NODE']

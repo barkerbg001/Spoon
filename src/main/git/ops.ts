@@ -239,7 +239,9 @@ export async function stashPush(ctx: RepoCtx, a: ApiArgs<'stash.push'>): Promise
   if (a.includeUntracked) args.push('--include-untracked')
   if (a.keepIndex) args.push('--keep-index')
   if (a.paths?.length) args.push('--', ...a.paths)
-  const r = await mgit(ctx, args)
+  // Newer Git's builtin stash passes ":/" to clean/checkout; that breaks under
+  // GIT_LITERAL_PATHSPECS (untracked files stay on disk after -u / --keep-index fails).
+  const r = await mgit(ctx, args, { literalPathspecs: false })
   if (/No local changes to save/i.test(r.stdout + r.stderr))
     throw new AppError('VALIDATION', 'There are no local changes to stash.')
 }
