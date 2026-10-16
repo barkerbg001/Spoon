@@ -24,6 +24,8 @@ const env = { ...process.env, GIT_CONFIG_GLOBAL: gitconfig, GIT_CONFIG_NOSYSTEM:
 >
 const mainEntry = resolve('out/main/index.js')
 const screenshotDir = process.env['SPOON_SCREENSHOTS']
+/** Matches app shortcuts: Mod is Cmd on macOS, Ctrl elsewhere. */
+const Mod = process.platform === 'darwin' ? 'Meta' : 'Control'
 
 const git = (cwd: string, ...args: string[]): string =>
   execFileSync('git', args, { cwd, env, encoding: 'utf8' })
@@ -83,7 +85,7 @@ test('welcome screen, theme toggle persists across restarts', async () => {
   let { app, page } = await launch(userData)
   await expect(page.getByRole('button', { name: /Open\s+An existing repository/ })).toBeEnabled()
   const wasDark = await page.evaluate(() => document.documentElement.classList.contains('dark'))
-  await page.keyboard.press('Control+Alt+KeyL')
+  await page.keyboard.press(`${Mod}+Alt+KeyL`)
   await expect
     .poll(() => page.evaluate(() => document.documentElement.classList.contains('dark')))
     .toBe(!wasDark)
@@ -114,20 +116,20 @@ test('open a repository, stage, commit, branch and browse history', async () => 
     await expect.poll(() => git(repo, 'diff', '--cached', '--name-only').trim()).toBe('app.ts')
     const message = page.getByRole('textbox', { name: 'Commit message' })
     await message.fill('Bump the answer')
-    await message.press('Control+Enter')
+    await message.press(`${Mod}+Enter`)
     await expect.poll(() => git(repo, 'log', '-1', '--format=%s').trim()).toBe('Bump the answer')
     // The untracked file is still there and was not committed.
     expect(git(repo, 'status', '--porcelain')).toContain('?? notes.txt')
 
     // Create a branch through the keyboard shortcut and dialog.
-    await page.keyboard.press('Control+KeyB')
+    await page.keyboard.press(`${Mod}+KeyB`)
     const dialog = page.getByRole('dialog', { name: 'New branch' })
     await dialog.getByLabel('Branch name').fill('feature/e2e')
     await dialog.getByRole('button', { name: 'Create branch' }).click()
     await expect.poll(() => git(repo, 'branch', '--show-current').trim()).toBe('feature/e2e')
 
     // History shows the commit graph and details.
-    await page.keyboard.press('Control+Digit1')
+    await page.keyboard.press(`${Mod}+Digit1`)
     const commitRow = page.getByText('Bump the answer').first()
     await expect(commitRow).toBeVisible()
     await expect(page.getByText('Merge feature/login').first()).toBeVisible()
@@ -142,7 +144,7 @@ test('open a repository, stage, commit, branch and browse history', async () => 
     await shot(page, 'history')
 
     // Command palette opens settings.
-    await page.keyboard.press('Control+KeyK')
+    await page.keyboard.press(`${Mod}+KeyK`)
     await page.getByPlaceholder(/Type a command/).fill('Open settings')
     await page.keyboard.press('Enter')
     await expect(page.getByRole('dialog', { name: /Settings/ })).toBeVisible()
@@ -151,7 +153,7 @@ test('open a repository, stage, commit, branch and browse history', async () => 
     await expect(page.getByRole('dialog')).toHaveCount(0)
     if (screenshotDir) {
       const dark = await page.evaluate(() => document.documentElement.classList.contains('dark'))
-      if (!dark) await page.keyboard.press('Control+Alt+KeyL')
+      if (!dark) await page.keyboard.press(`${Mod}+Alt+KeyL`)
       await shot(page, 'history-dark')
     }
   } finally {
