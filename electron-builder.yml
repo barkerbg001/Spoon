@@ -1,0 +1,63 @@
+# Packaging configuration. Artifacts are written to dist/ and never published
+# automatically: every package script passes --publish never.
+appId: io.github.barkerbg001.spoon
+productName: Spoon
+copyright: Copyright © 2026 The Spoon contributors
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+  - '!**/*.map'
+extraResources:
+  - from: build/icon.png
+    to: icon.png
+  - from: LICENSE
+    to: LICENSE.spoon.txt
+  - from: THIRD_PARTY_NOTICES.md
+    to: THIRD_PARTY_NOTICES.md
+asar: true
+npmRebuild: false
+publish: null
+
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64, arm64]
+    - target: zip
+      arch: [x64]
+  # Code signing is configured through environment variables (CSC_LINK / CSC_KEY_PASSWORD
+  # or Azure Trusted Signing); see docs/packaging.md. Unsigned builds work but trigger SmartScreen.
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ${productName}-${version}-setup-${arch}.${ext}
+  shortcutName: Spoon
+
+mac:
+  icon: build/icon.icns
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+    - target: zip
+      arch: [x64, arm64]
+  hardenedRuntime: true
+  # Notarisation requires an Apple Developer ID; see docs/packaging.md.
+  notarize: false
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+linux:
+  icon: build/icons
+  category: Development
+  maintainer: Spoon contributors
+  synopsis: Open-source desktop Git client
+  target:
+    - AppImage
+    - deb
+    - tar.gz
+  artifactName: ${productName}-${version}-${arch}.${ext}

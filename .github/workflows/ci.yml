@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      - run: node scripts/license-inventory.mjs --check
+      - run: npm test
+      - run: npx playwright install-deps
+        if: runner.os == 'Linux'
+      - name: End-to-end tests
+        if: runner.os != 'Linux'
+        run: npm run test:e2e
+      - name: End-to-end tests (virtual display)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-results-${{ matrix.os }}
+          path: test-results/
+          retention-days: 7
+
+  package:
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Package unpacked app (unsigned, not published)
+        run: npm run package:dir
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'

@@ -1,0 +1,301 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --radius: 0.5rem;
+  --background: #ffffff;
+  --foreground: #1b1b1f;
+  --card: #ffffff;
+  --card-foreground: #1b1b1f;
+  --popover: #ffffff;
+  --popover-foreground: #1b1b1f;
+  --muted: #f3f3f5;
+  --muted-foreground: #5d5d66;
+  --accent: #f1f1f4;
+  --accent-foreground: #1b1b1f;
+  --border: #e2e2e7;
+  --input: #d6d6dd;
+  --sidebar: #f7f7f9;
+  --panel: #fbfbfc;
+  /* --primary is derived from the user's accent (see theme.ts) */
+  --primary: #c41e3a;
+  --primary-foreground: #ffffff;
+  --ring: #c41e3a;
+  --destructive: #b42318;
+  --destructive-foreground: #ffffff;
+
+  --added: #1a7f37;
+  --added-bg: rgba(26, 127, 55, 0.12);
+  --added-strong: rgba(26, 127, 55, 0.26);
+  --removed: #b42318;
+  --removed-bg: rgba(212, 54, 38, 0.11);
+  --removed-strong: rgba(212, 54, 38, 0.25);
+  --modified: #9a6700;
+  --renamed: #0b62c9;
+  --conflict: #b35900;
+  --info: #0b62c9;
+
+  --lane-0: #c41e3a;
+  --lane-1: #0b62c9;
+  --lane-2: #1a7f37;
+  --lane-3: #8250df;
+  --lane-4: #b35900;
+  --lane-5: #0e7c86;
+  --lane-6: #bf3989;
+  --lane-7: #6e7781;
+
+  --row-h: 28px;
+  --ui-font-size: 13px;
+  --mono: ui-monospace, 'Cascadia Code', 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+}
+
+.dark {
+  --background: #16161a;
+  --foreground: #e8e8ec;
+  --card: #1c1c21;
+  --card-foreground: #e8e8ec;
+  --popover: #202026;
+  --popover-foreground: #e8e8ec;
+  --muted: #24242a;
+  --muted-foreground: #a0a0ab;
+  --accent: #2a2a31;
+  --accent-foreground: #f2f2f5;
+  --border: #2f2f37;
+  --input: #3a3a43;
+  --sidebar: #1a1a1f;
+  --panel: #19191d;
+  --destructive: #f2685c;
+  --destructive-foreground: #16161a;
+
+  --added: #4ac26b;
+  --added-bg: rgba(46, 160, 67, 0.15);
+  --added-strong: rgba(46, 160, 67, 0.32);
+  --removed: #ff7b72;
+  --removed-bg: rgba(248, 81, 73, 0.14);
+  --removed-strong: rgba(248, 81, 73, 0.3);
+  --modified: #e3b341;
+  --renamed: #58a6ff;
+  --conflict: #f0883e;
+  --info: #58a6ff;
+
+  --lane-0: #ff5c7a;
+  --lane-1: #58a6ff;
+  --lane-2: #4ac26b;
+  --lane-3: #bc8cff;
+  --lane-4: #f0883e;
+  --lane-5: #39c5cf;
+  --lane-6: #ff80c8;
+  --lane-7: #9da7b3;
+}
+
+[data-density='compact'] {
+  --row-h: 23px;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-panel: var(--panel);
+  --color-added: var(--added);
+  --color-removed: var(--removed);
+  --color-modified: var(--modified);
+  --color-renamed: var(--renamed);
+  --color-conflict: var(--conflict);
+  --color-info: var(--info);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --font-mono: var(--mono);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family:
+      'Segoe UI Variable Text',
+      'Segoe UI',
+      system-ui,
+      -apple-system,
+      'Inter',
+      Roboto,
+      Ubuntu,
+      sans-serif;
+    font-size: var(--ui-font-size);
+    overflow: hidden;
+    user-select: none;
+  }
+  input,
+  textarea,
+  [data-selectable] {
+    user-select: text;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 1px;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--muted-foreground) 35%, transparent);
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+[data-reduce-motion='true'] *,
+[data-reduce-motion='true'] *::before,
+[data-reduce-motion='true'] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
+
+.row-h {
+  height: var(--row-h);
+}
+
+.mono {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+/* Diff rendering */
+.diff-line {
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 20px;
+  white-space: pre;
+}
+.diff-wrap .diff-line {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.diff-add {
+  background: var(--added-bg);
+}
+.diff-del {
+  background: var(--removed-bg);
+}
+.diff-add.diff-selected {
+  background: var(--added-strong);
+  box-shadow: inset 3px 0 0 var(--added);
+}
+.diff-del.diff-selected {
+  background: var(--removed-strong);
+  box-shadow: inset 3px 0 0 var(--removed);
+}
+.ws {
+  color: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
+}
+
+/* highlight.js tokens mapped to theme-aware colours */
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-built_in,
+.hljs-doctag {
+  color: #a3123a;
+}
+.hljs-string,
+.hljs-attr,
+.hljs-template-tag,
+.hljs-addition {
+  color: #116329;
+}
+.hljs-number,
+.hljs-literal,
+.hljs-symbol {
+  color: #0550ae;
+}
+.hljs-comment,
+.hljs-quote,
+.hljs-meta {
+  color: #6e7781;
+  font-style: italic;
+}
+.hljs-title,
+.hljs-section,
+.hljs-function .hljs-title {
+  color: #6639ba;
+}
+.hljs-type,
+.hljs-class .hljs-title,
+.hljs-variable,
+.hljs-params {
+  color: #953800;
+}
+.dark .hljs-keyword,
+.dark .hljs-selector-tag,
+.dark .hljs-built_in,
+.dark .hljs-doctag {
+  color: #ff7b9c;
+}
+.dark .hljs-string,
+.dark .hljs-attr,
+.dark .hljs-template-tag {
+  color: #7ee787;
+}
+.dark .hljs-number,
+.dark .hljs-literal,
+.dark .hljs-symbol {
+  color: #79c0ff;
+}
+.dark .hljs-comment,
+.dark .hljs-quote,
+.dark .hljs-meta {
+  color: #8b949e;
+}
+.dark .hljs-title,
+.dark .hljs-section {
+  color: #d2a8ff;
+}
+.dark .hljs-type,
+.dark .hljs-variable,
+.dark .hljs-params {
+  color: #ffa657;
+}
+
+.checkerboard {
+  background-image:
+    linear-gradient(45deg, var(--muted) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--muted) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--muted) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--muted) 75%);
+  background-size: 16px 16px;
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0;
+}

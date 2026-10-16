@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 100 100">
+  <!-- Spoon mark: two branch lines converging into one commit. Original artwork, kept in sync with src/renderer/src/components/Logo.tsx. -->
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e3304f"/>
+      <stop offset="1" stop-color="#9e1230"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="92" height="92" rx="22" fill="url(#g)"/>
+  <path d="M30 27 C30 50 50 52 50 74 M70 27 C70 50 50 52 50 74" stroke="#fff" stroke-width="7.5" stroke-linecap="round" fill="none"/>
+  <circle cx="30" cy="27" r="8.5" fill="#fff"/>
+  <circle cx="70" cy="27" r="8.5" fill="#fff"/>
+  <circle cx="50" cy="76" r="10" fill="#fff"/>
+  <circle cx="50" cy="76" r="4.2" fill="#b5193a"/>
+</svg>

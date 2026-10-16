@@ -1,0 +1,50 @@
+name: Bug report
+description: Something in Spoon doesn't work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please don't report security vulnerabilities here — see SECURITY.md.
+        Remove tokens, private URLs and file contents you can't share before posting logs.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Include what you expected to happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a repository with ...
+        2. Click ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Spoon version
+      description: Shown in Settings → Privacy & about.
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [Windows, macOS, Linux]
+    validations:
+      required: true
+  - type: input
+    id: git
+    attributes:
+      label: Git version
+      placeholder: git version 2.47.0
+  - type: textarea
+    id: log
+    attributes:
+      label: Operation log or error message
+      description: Open the operation log from the status bar and copy the failing entry.
+      render: text
