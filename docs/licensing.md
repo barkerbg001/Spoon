@@ -12,7 +12,7 @@ holder instead, change the copyright line in `LICENSE` and `electron-builder.yml
 | **MIT**          | **Chosen.** Short, widely understood, maximises adoption and reuse; same licence as GitHub Desktop and 88 of 92 bundled dependencies. |
 | Apache-2.0       | Adds an explicit patent grant, but longer and needs NOTICE handling. Little patent exposure for a Git GUI.                            |
 | MPL-2.0          | File-level copyleft. Would keep improvements open, at the cost of more friction for reuse.                                            |
-| GPL-3.0-or-later | Strong copyleft (Git Extensions uses it). Discourages embedding parts of Spoon elsewhere.                                           |
+| GPL-3.0-or-later | Strong copyleft (Git Extensions uses it). Discourages embedding parts of Spoon elsewhere.                                             |
 | FSL / BSL-style  | Not OSI open source, which conflicts with the project's goals.                                                                        |
 
 Trade-off accepted: anyone, including commercial vendors, may build closed-source products from
