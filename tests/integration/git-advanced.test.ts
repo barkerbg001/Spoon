@@ -330,16 +330,32 @@ describe('stash, worktrees, submodules, bisect and flow', () => {
       keepIndex: false
     })
     expect(readFileSync(join(ctx.root, 'f.txt'), 'utf8')).toBe('1\n')
+    expect(existsSync(join(ctx.root, 'u.txt'))).toBe(false)
     const list = await branches.listStashes(ctx)
     expect(list[0]!.message).toContain('wip')
     const files = await ops.stashFiles(ctx, 0)
     expect(files.map((f) => f.path).sort()).toEqual(['f.txt', 'u.txt'])
+
+    // Apply keeps the stash; Git refuses to restore untracked files over existing ones,
+    // so drop after verifying instead of apply→clean→pop on the same -u stash.
     await ops.stashApply(ctx, 0, false, false)
     expect(readFileSync(join(ctx.root, 'f.txt'), 'utf8')).toBe('2\n')
-    sh(ctx.root, 'checkout', '--', 'f.txt')
-    sh(ctx.root, 'clean', '-fq')
-    await ops.stashApply(ctx, 0, true, false)
+    expect(existsSync(join(ctx.root, 'u.txt'))).toBe(true)
+    await ops.stashDrop(ctx, 0)
     expect((await branches.listStashes(ctx)).length).toBe(0)
+
+    write(ctx.root, 'f.txt', '3\n')
+    await ops.stashPush(ctx, {
+      repo: ctx.root,
+      message: 'pop-me',
+      includeUntracked: false,
+      keepIndex: false
+    })
+    await ops.stashApply(ctx, 0, true, false)
+    expect(readFileSync(join(ctx.root, 'f.txt'), 'utf8')).toBe('3\n')
+    expect((await branches.listStashes(ctx)).length).toBe(0)
+
+    write(ctx.root, 'f.txt', '4\n')
     await expect(
       ops.stashPush(ctx, { repo: ctx.root, includeUntracked: false, keepIndex: false })
     ).resolves.toBeUndefined()
