@@ -213,15 +213,16 @@ test('discarding requires explicit confirmation', async () => {
     const fileRow = page.getByRole('option', { name: /app\.ts/ }).first()
     await fileRow.click()
     await page.keyboard.press('Delete')
-    const dialog = page.getByRole('dialog')
+    const dialog = page.getByRole('dialog', { name: /Discard changes/ })
     await expect(dialog).toContainText('app.ts')
     await dialog.getByRole('button', { name: 'Cancel' }).click()
     expect(git(repo, 'status', '--porcelain')).toContain(' M app.ts')
+    // Dialog close can leave focus on the page body (especially under xvfb); re-select the file.
+    await fileRow.click()
     await page.keyboard.press('Delete')
-    await page
-      .getByRole('dialog')
-      .getByRole('button', { name: /Discard/ })
-      .click()
+    const confirm = page.getByRole('dialog', { name: /Discard changes/ })
+    await expect(confirm).toBeVisible()
+    await confirm.getByRole('button', { name: 'Discard', exact: true }).click()
     await expect.poll(() => git(repo, 'status', '--porcelain')).not.toContain('app.ts')
   } finally {
     await app.close()
