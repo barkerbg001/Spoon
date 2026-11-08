@@ -10,6 +10,7 @@ export type RepoView =
   | { kind: 'blame'; path: string; rev?: string }
   | { kind: 'tree'; rev: string }
   | { kind: 'reflog' }
+  | { kind: 'stats' }
   | { kind: 'compare'; from: string; to: string }
   | { kind: 'pulls' }
   | { kind: 'stash'; index: number; hash: string; message: string }

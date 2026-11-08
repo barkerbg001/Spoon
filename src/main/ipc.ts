@@ -1,3 +1,5 @@
+import { realpathSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { BrowserWindow, ipcMain, type IpcMainInvokeEvent, type WebFrameMain } from 'electron'
 import { api, type ApiEvent, type ApiEvents, type ApiMethod, type ApiResponse } from '@shared/api'
 import { AppError, toErrorPayload } from './errors'
@@ -8,6 +10,18 @@ import { recordUndo } from './git/undo'
 
 export const INVOKE_CHANNEL = 'spoon:invoke'
 export const EVENT_CHANNEL = 'spoon:event'
+
+function sameRealFile(a: string, b: string): boolean {
+  try {
+    const ra = realpathSync.native(a)
+    const rb = realpathSync.native(b)
+    return process.platform === 'win32' || process.platform === 'darwin'
+      ? ra.toLowerCase() === rb.toLowerCase()
+      : ra === rb
+  } catch {
+    return false
+  }
+}
 
 /** The renderer is either the dev server (development) or the bundled file (production). */
 export function isTrustedUrl(
@@ -23,10 +37,14 @@ export function isTrustedUrl(
     }
     if (u.protocol === 'file:') {
       const want = new URL(`file:///${rendererFile.replace(/\\/g, '/').replace(/^\/+/, '')}`)
-      return (
+      if (
         decodeURIComponent(u.pathname).toLowerCase() ===
         decodeURIComponent(want.pathname).toLowerCase()
       )
+        return true
+      // The same file can be spelled differently: a Windows 8.3 short name (C:\Users\ABC~1\...)
+      // or a symlinked folder. Compare the real paths of both; a different file never matches.
+      return sameRealFile(fileURLToPath(u), rendererFile)
     }
     return false
   } catch {

@@ -104,6 +104,14 @@ export const COMMANDS: Command[] = [
     run: (r) => void A.undo(r!)
   },
   {
+    id: 'redo',
+    label: 'Redo undone Git operation…',
+    group: 'Repository',
+    shortcut: 'redo',
+    needsRepo: true,
+    run: (r) => void A.redo(r!)
+  },
+  {
     id: 'newBranch',
     label: 'New branch…',
     group: 'Repository',
@@ -193,6 +201,13 @@ export const COMMANDS: Command[] = [
     shortcut: 'viewPulls',
     needsRepo: true,
     run: (r) => r!.setView({ kind: 'pulls' })
+  },
+  {
+    id: 'viewStats',
+    label: 'Show repository statistics',
+    group: 'Views',
+    needsRepo: true,
+    run: (r) => r!.setView({ kind: 'stats' })
   },
   {
     id: 'viewReflog',

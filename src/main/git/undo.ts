@@ -35,6 +35,8 @@ interface UndoEntry {
 
 const MAX_ENTRIES = 30
 const stacks = new Map<string, UndoEntry[]>()
+/** Entries undone in this session, most recent last; cleared by any new undoable operation. */
+const redoStacks = new Map<string, UndoEntry[]>()
 
 export async function snapshot(ctx: RepoCtx): Promise<RefSnapshot> {
   const [refs, sym, head] = await Promise.all([
@@ -92,6 +94,7 @@ export async function recordUndo<T>(
     stack.push({ label, time: Date.now(), mode, before, after })
     if (stack.length > MAX_ENTRIES) stack.splice(0, stack.length - MAX_ENTRIES)
     stacks.set(key, stack)
+    redoStacks.delete(key)
   } catch {
     /* recording undo is best effort; the command itself succeeded */
   }
@@ -102,64 +105,130 @@ const shortRef = (r: string | null): string =>
   r ? r.replace(/^refs\/heads\//, '').replace(/^refs\/tags\//, 'tag ') : 'detached HEAD'
 const shortOid = (o: string | undefined | null): string => (o ? o.slice(0, 7) : '—')
 
-/** Human-readable list of what undoing `e` would change. */
-function describe(e: UndoEntry): string[] {
+type Direction = 'undo' | 'redo'
+/** The state an entry moves to, and the state it must currently be in, for a direction. */
+const ends = (e: UndoEntry, d: Direction): { target: RefSnapshot; current: RefSnapshot } =>
+  d === 'undo' ? { target: e.before, current: e.after } : { target: e.after, current: e.before }
+
+/** Human-readable list of what applying `e` in direction `d` would change. */
+function describe(e: UndoEntry, d: Direction): string[] {
+  const { target, current } = ends(e, d)
+  const back = d === 'undo' ? ' back' : ''
   const out: string[] = []
-  for (const ref of changedRefs(e.before, e.after)) {
-    const was = e.before.refs[ref]
-    const now = e.after.refs[ref]
+  for (const ref of changedRefs(target, current)) {
+    const want = target.refs[ref]
+    const now = current.refs[ref]
     const name = shortRef(ref)
-    if (!was) out.push(`Delete ${name} (created at ${shortOid(now)})`)
-    else if (!now) out.push(`Restore ${name} at ${shortOid(was)}`)
-    else out.push(`Move ${name} from ${shortOid(now)} back to ${shortOid(was)}`)
+    if (!want) out.push(`Delete ${name} (${d === 'undo' ? 'created' : 'now'} at ${shortOid(now)})`)
+    else if (!now) out.push(`Restore ${name} at ${shortOid(want)}`)
+    else out.push(`Move ${name} from ${shortOid(now)}${back} to ${shortOid(want)}`)
   }
-  if (e.before.head !== e.after.head) {
+  if (target.head !== current.head) {
     out.push(
-      e.before.head
-        ? `Switch back to ${shortRef(e.before.head)}`
-        : `Check out ${shortOid(e.before.headOid)} (detached HEAD)`
+      target.head
+        ? `Switch${back} to ${shortRef(target.head)}`
+        : `Check out ${shortOid(target.headOid)} (detached HEAD)`
     )
-  } else if (!e.before.head && e.before.headOid !== e.after.headOid) {
-    out.push(`Move detached HEAD back to ${shortOid(e.before.headOid)}`)
+  } else if (!target.head && target.headOid !== current.headOid) {
+    out.push(`Move detached HEAD${back} to ${shortOid(target.headOid)}`)
   }
   return out
 }
 
-/** Why the entry can no longer be undone safely, or null if it can. */
-function staleReason(e: UndoEntry, now: RefSnapshot): string | null {
-  for (const ref of changedRefs(e.before, e.after)) {
-    if (now.refs[ref] !== e.after.refs[ref])
-      return `${shortRef(ref)} changed after "${e.label}". Undo would overwrite that later work; use the reflog instead.`
+/** Why the entry can no longer be applied safely in direction `d`, or null if it can. */
+function staleReason(e: UndoEntry, d: Direction, now: RefSnapshot): string | null {
+  const { target, current } = ends(e, d)
+  const verb = d === 'undo' ? 'Undo' : 'Redo'
+  for (const ref of changedRefs(target, current)) {
+    if (now.refs[ref] !== current.refs[ref])
+      return `${shortRef(ref)} changed after "${e.label}". ${verb} would overwrite that later work; use the reflog instead.`
   }
-  if (!sameHead(now, e.after))
-    return `HEAD moved after "${e.label}" (you are now on ${shortRef(now.head)} at ${shortOid(now.headOid)}). Undo only reverts the most recent change.`
+  if (!sameHead(now, current))
+    return `HEAD moved after "${e.label}" (you are now on ${shortRef(now.head)} at ${shortOid(now.headOid)}). ${verb} only applies to the most recent change.`
   return null
 }
 
-export async function peekUndo(ctx: RepoCtx): Promise<UndoPreview | null> {
-  const stack = stacks.get(normalizeKey(ctx.root))
+async function peek(ctx: RepoCtx, d: Direction): Promise<UndoPreview | null> {
+  const stack = (d === 'undo' ? stacks : redoStacks).get(normalizeKey(ctx.root))
   const e = stack?.[stack.length - 1]
   if (!e) return null
   let reason: string | null
-  const op = detectOperation(ctx).operation
-  if (op !== 'none') reason = 'Finish or abort the operation in progress first.'
-  else reason = staleReason(e, await snapshot(ctx))
-  return { label: e.label, time: e.time, changes: describe(e), blockedReason: reason }
+  if (detectOperation(ctx).operation !== 'none')
+    reason = 'Finish or abort the operation in progress first.'
+  else reason = staleReason(e, d, await snapshot(ctx))
+  return { label: e.label, time: e.time, changes: describe(e, d), blockedReason: reason }
 }
+
+export const peekUndo = (ctx: RepoCtx): Promise<UndoPreview | null> => peek(ctx, 'undo')
+export const peekRedo = (ctx: RepoCtx): Promise<UndoPreview | null> => peek(ctx, 'redo')
 
 export function clearUndo(ctx: RepoCtx): void {
   stacks.delete(normalizeKey(ctx.root))
+  redoStacks.delete(normalizeKey(ctx.root))
 }
 
-export async function runUndo(ctx: RepoCtx): Promise<UndoPreview> {
+/**
+ * Move every reference the entry changed from `current` to `target`. Compare-and-swap against
+ * `current`, so concurrent changes make Git refuse instead of being overwritten.
+ */
+async function transition(
+  ctx: RepoCtx,
+  target: RefSnapshot,
+  current: RefSnapshot,
+  now: RefSnapshot,
+  mode: RestoreMode,
+  msg: string
+): Promise<void> {
+  const zero =
+    (now.headOid ?? Object.values(now.refs)[0] ?? '').replace(/./g, '0') || '0'.repeat(40)
+  const changed = changedRefs(target, current)
+  // HEAD names the same branch (or stays detached) on both sides: move it with reset.
+  const stayOnBranch = target.head === current.head
+  const currentRef = stayOnBranch ? target.head : null
+
+  // 1. Create or move every ref that exists in the target (except the checked-out branch, which
+  //    is moved together with the index and working tree below).
+  for (const ref of changed) {
+    const want = target.refs[ref]
+    if (!want || ref === currentRef) continue
+    await mgit(ctx, ['update-ref', '-m', msg, ref, want, current.refs[ref] ?? zero])
+  }
+
+  // 2. Put HEAD where the target has it.
+  if (stayOnBranch) {
+    const want = currentRef ? target.refs[currentRef] : target.headOid
+    if (want && want !== now.headOid) await mgit(ctx, ['reset', `--${mode}`, want, '--'])
+  } else {
+    const sameCommit = target.headOid !== null && target.headOid === now.headOid
+    if (target.head && sameCommit) {
+      // e.g. a rename of the current branch: no files change, only HEAD's name.
+      await mgit(ctx, ['symbolic-ref', '-m', msg, 'HEAD', target.head])
+    } else if (target.head) {
+      await mgit(ctx, ['checkout', target.head.replace(/^refs\/heads\//, ''), '--'])
+    } else if (target.headOid) {
+      await mgit(ctx, ['checkout', '--detach', target.headOid, '--'])
+    }
+  }
+
+  // 3. Delete refs the target does not have (after HEAD has moved off them).
+  for (const ref of changed) {
+    if (target.refs[ref]) continue
+    const cur = current.refs[ref]
+    if (cur) await mgit(ctx, ['update-ref', '-m', msg, '-d', ref, cur])
+  }
+}
+
+async function apply(ctx: RepoCtx, d: Direction): Promise<UndoPreview> {
   const key = normalizeKey(ctx.root)
-  const stack = stacks.get(key)
+  const from = d === 'undo' ? stacks : redoStacks
+  const to = d === 'undo' ? redoStacks : stacks
+  const stack = from.get(key)
   const e = stack?.[stack.length - 1]
-  if (!e) throw new AppError('VALIDATION', 'There is nothing to undo.')
+  if (!e) throw new AppError('VALIDATION', `There is nothing to ${d}.`)
   if (detectOperation(ctx).operation !== 'none')
     throw new AppError('VALIDATION', 'Finish or abort the operation in progress first.')
   const now = await snapshot(ctx)
-  const stale = staleReason(e, now)
+  const stale = staleReason(e, d, now)
   if (stale) {
     stack!.pop() // it can never become valid again
     throw new AppError('STALE', stale)
@@ -167,52 +236,17 @@ export async function runUndo(ctx: RepoCtx): Promise<UndoPreview> {
   const preview: UndoPreview = {
     label: e.label,
     time: e.time,
-    changes: describe(e),
+    changes: describe(e, d),
     blockedReason: null
   }
-  const msg = `spoon: undo ${e.label}`
-  const zero =
-    (now.headOid ?? Object.values(now.refs)[0] ?? '').replace(/./g, '0') || '0'.repeat(40)
-  const changed = changedRefs(e.before, e.after)
-  const { before, after } = e
-  // HEAD names the same branch (or stays detached) before and after: move it with reset.
-  const stayOnBranch = before.head === after.head
-  const currentRef = stayOnBranch ? before.head : null
-
-  // 1. Create or move every ref that existed before (except the checked-out branch, which is
-  //    moved together with the index and working tree below). Compare-and-swap against the value
-  //    the command left, so concurrent changes make Git refuse instead of being overwritten.
-  for (const ref of changed) {
-    const was = before.refs[ref]
-    if (!was || ref === currentRef) continue
-    await mgit(ctx, ['update-ref', '-m', msg, ref, was, after.refs[ref] ?? zero])
-  }
-
-  // 2. Put HEAD back.
-  if (stayOnBranch) {
-    const was = currentRef ? before.refs[currentRef] : before.headOid
-    if (was && was !== now.headOid) {
-      await mgit(ctx, ['reset', `--${e.mode}`, was, '--'])
-    }
-  } else {
-    const sameCommit = before.headOid !== null && before.headOid === now.headOid
-    if (before.head && sameCommit) {
-      // e.g. undoing a rename of the current branch: no files change, only HEAD's name.
-      await mgit(ctx, ['symbolic-ref', '-m', msg, 'HEAD', before.head])
-    } else if (before.head) {
-      await mgit(ctx, ['checkout', before.head.replace(/^refs\/heads\//, ''), '--'])
-    } else if (before.headOid) {
-      await mgit(ctx, ['checkout', '--detach', before.headOid, '--'])
-    }
-  }
-
-  // 3. Delete refs the command created (after HEAD has moved off them).
-  for (const ref of changed) {
-    if (before.refs[ref]) continue
-    const cur = after.refs[ref]
-    if (cur) await mgit(ctx, ['update-ref', '-m', msg, '-d', ref, cur])
-  }
-
+  const { target, current } = ends(e, d)
+  await transition(ctx, target, current, now, e.mode, `spoon: ${d} ${e.label}`)
   stack!.pop()
+  const other = to.get(key) ?? []
+  other.push(e)
+  to.set(key, other)
   return preview
 }
+
+export const runUndo = (ctx: RepoCtx): Promise<UndoPreview> => apply(ctx, 'undo')
+export const runRedo = (ctx: RepoCtx): Promise<UndoPreview> => apply(ctx, 'redo')

@@ -24,7 +24,8 @@ import * as branches from './git/branches'
 import * as ops from './git/ops'
 import * as conflicts from './git/conflicts'
 import * as extras from './git/extras'
-import { peekUndo, runUndo, type RestoreMode } from './git/undo'
+import * as stats from './git/stats'
+import { peekRedo, peekUndo, runRedo, runUndo, type RestoreMode } from './git/undo'
 import { isRepoLocked, withRepoLock } from './git/lock'
 import { AppStore } from './store'
 import { SecretStore } from './secrets'
@@ -81,6 +82,7 @@ export const MUTATING = new Set<ApiMethod>([
   'stash.drop',
   'reflog.createBranch',
   'undo.run',
+  'redo.run',
   'conflict.save',
   'conflict.take',
   'conflict.markResolved',
@@ -442,6 +444,8 @@ export function createHandlers(s: Services): Handlers {
     'history.reflog': ({ repo: r, ref, limit }) => history.reflog(repo(r), ref, limit),
     'history.blob': ({ repo: r, rev, path }) => history.blob(repo(r), rev, path),
 
+    'stats.overview': (a) => stats.overview(repo(a.repo), a),
+    'stats.files': (a) => stats.fileStats(repo(a.repo), a),
     'diff.get': ({ repo: r, source, options }) => changes.getDiff(repo(r), source, options),
     'index.stage': ({ repo: r, paths }) => changes.stage(repo(r), paths),
     'index.stageAll': ({ repo: r }) => changes.stageAll(repo(r)),
@@ -502,6 +506,8 @@ export function createHandlers(s: Services): Handlers {
     'stash.files': ({ repo: r, index }) => ops.stashFiles(repo(r), index),
     'undo.peek': ({ repo: r }) => peekUndo(repo(r)),
     'undo.run': ({ repo: r }) => runUndo(repo(r)),
+    'redo.peek': ({ repo: r }) => peekRedo(repo(r)),
+    'redo.run': ({ repo: r }) => runRedo(repo(r)),
     'reflog.createBranch': ({ repo: r, name, hash }) => ops.branchFromReflog(repo(r), name, hash),
 
     'conflict.get': ({ repo: r, path }) => conflicts.getConflict(repo(r), path),

@@ -155,6 +155,15 @@ test('stage individual lines, commit, then undo the commit', async () => {
     await expect.poll(() => subjects(repo)).toEqual(['initial'])
     expect(git(repo, 'diff', '--cached')).toContain('+line 2 EDITED')
     expect(git(repo, 'diff')).toContain('+line 10 EDITED')
+
+    // Redo from the toolbar puts the commit back; line 10 stays an unstaged edit.
+    await page.getByRole('button', { name: 'Redo', exact: true }).click()
+    const redoDlg = page.getByRole('dialog', { name: /Redo "Commit"/ })
+    await expect(redoDlg).toContainText(/Move main from [0-9a-f]{7} to [0-9a-f]{7}/)
+    await redoDlg.getByRole('button', { name: 'Redo', exact: true }).click()
+    await expect.poll(() => subjects(repo)).toEqual(['Edit line 2 only', 'initial'])
+    expect(git(repo, 'diff', '--cached')).toBe('')
+    expect(git(repo, 'diff')).toContain('+line 10 EDITED')
   } catch (e) {
     await failShot(page)
     throw e

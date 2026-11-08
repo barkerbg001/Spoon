@@ -125,6 +125,21 @@ const rebaseTodo = z.object({
   message: z.string().max(100_000).optional()
 })
 
+const isoDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .nullable()
+  .optional()
+const statsArgs = z
+  .object({
+    repo: repoPath,
+    scope: z.enum(['head', 'local']),
+    since: isoDate,
+    until: isoDate,
+    opId: opId.optional()
+  })
+  .refine((a) => !a.since || !a.until || a.since <= a.until, 'The start date is after the end date')
+
 const hostingKind = z.enum(['github', 'gitlab', 'bitbucket', 'azure'])
 
 // ---------------------------------------------------------------------------
@@ -241,6 +256,10 @@ export const api = {
   'history.blob': m<T.BlobContent>()(
     z.object({ ...repo, rev: z.string().max(512).refine(noNul).refine(notOption), path: relPath })
   ),
+
+  // Repository statistics (read-only)
+  'stats.overview': m<T.StatsOverview>()(statsArgs),
+  'stats.files': m<T.StatsFiles>()(statsArgs),
 
   // Working tree
   'diff.get': m<T.DiffResult>()(z.object({ ...repo, source: diffSource, options: diffOptions })),
@@ -415,6 +434,8 @@ export const api = {
   'stash.files': m<T.CommitFile[]>()(z.object({ ...repo, index: z.number().int().min(0) })),
   'undo.peek': m<T.UndoPreview | null>()(z.object(repo)),
   'undo.run': m<T.UndoPreview>()(z.object(repo)),
+  'redo.peek': m<T.UndoPreview | null>()(z.object(repo)),
+  'redo.run': m<T.UndoPreview>()(z.object(repo)),
   'reflog.createBranch': m<void>()(z.object({ ...repo, name: refName, hash: revision })),
 
   // Conflicts

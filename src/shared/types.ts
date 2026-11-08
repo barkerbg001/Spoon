@@ -447,3 +447,84 @@ export interface WorktreeStatus {
   /** Uncommitted changes, one "kind  path" line each */
   changes: string[]
 }
+
+// Repository statistics ---------------------------------------------------------------------
+
+/** "head": commits reachable from HEAD; "local": commits reachable from any local branch. */
+export type StatsScope = 'head' | 'local'
+
+export interface StatsContributor {
+  /** Most frequent name after .mailmap */
+  name: string
+  email: string
+  /** Non-merge commits */
+  commits: number
+  merges: number
+  firstDate: string
+  lastDate: string
+}
+
+export interface StatsOverview {
+  scope: StatsScope
+  /** e.g. "main", "Detached HEAD at abc1234", "All local branches (3)" */
+  scopeLabel: string
+  refs: string[]
+  /** Inclusive YYYY-MM-DD bounds (author date, author's time zone); null = unbounded */
+  since: string | null
+  until: string | null
+  /** History is incomplete (shallow clone): numbers cover the available local history only */
+  shallow: boolean
+  /** No commits exist in this scope at all (unborn HEAD or no local branches) */
+  empty: boolean
+  /** The repository has a .mailmap file in its working tree */
+  mailmap: boolean
+  /** Unique commits in range, merges included */
+  totalCommits: number
+  mergeCommits: number
+  contributors: StatsContributor[]
+  /** Commits per author-local calendar day (days without commits omitted) */
+  days: { date: string; commits: number }[]
+  /** Monday … Sunday */
+  weekday: number[]
+  /** 0 … 23, author-local hour */
+  hour: number[]
+  firstDate: string | null
+  lastDate: string | null
+  elapsedMs: number
+}
+
+export interface StatsFileContributor {
+  name: string
+  email: string
+  added: number
+  deleted: number
+  fileChanges: number
+}
+
+export interface StatsTopFile {
+  /** Newest name of the file (renames are followed within the analysed commits) */
+  path: string
+  /** Non-merge commits that changed the file */
+  commits: number
+  added: number
+  deleted: number
+  binary: boolean
+}
+
+export interface StatsFiles {
+  /** Non-merge commits whose diffs were analysed */
+  commitsAnalysed: number
+  /** Sum over commits of files changed in each commit */
+  fileChanges: number
+  /** Distinct files changed */
+  filesChanged: number
+  linesAdded: number
+  linesDeleted: number
+  binaryChanges: number
+  renames: number
+  contributors: StatsFileContributor[]
+  topFiles: StatsTopFile[]
+  elapsedMs: number
+  /** Served from Spoon's cache (same branch tips, range and .mailmap as an earlier run) */
+  cached: boolean
+}

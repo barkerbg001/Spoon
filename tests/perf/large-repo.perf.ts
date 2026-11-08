@@ -1,7 +1,7 @@
 // Large-repository benchmark. Generates a disposable repository with git fast-import and
 // times the main-process operations the UI depends on. Run with: npm run perf
 // Sizes can be overridden: PERF_COMMITS=100000 PERF_FILES=50000 npm run perf
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { appendFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { performance } from 'node:perf_hooks'
@@ -13,6 +13,8 @@ import { getStatus, getSummary } from '../../src/main/git/repo'
 import { refsSnapshot } from '../../src/main/git/branches'
 import { log } from '../../src/main/git/history'
 import { getDiff } from '../../src/main/git/changes'
+import * as stats from '../../src/main/git/stats'
+import { cancelOp } from '../../src/main/git/runner'
 import { cleanup, openCtx, sh, tempDir } from '../integration/helpers'
 
 const COMMITS = Number(process.env['PERF_COMMITS'] ?? 50_000)
@@ -196,6 +198,72 @@ describe(`large repository (${COMMITS} commits, ${FILES} files)`, () => {
         }).options
       )
     )
+    // Repository statistics ---------------------------------------------------------------
+    const ov = await time(
+      'stats: overview, current branch, all time',
+      () => stats.overview(ctx, { scope: 'head' }),
+      (o) => `${o.totalCommits} commits, ${o.mergeCommits} merges`
+    )
+    expect(ov.totalCommits).toBe(Number(sh(dir, 'rev-list', '--count', 'HEAD').trim()))
+    const ovl = await time(
+      'stats: overview, all local branches',
+      () => stats.overview(ctx, { scope: 'local' }),
+      (o) => `${o.totalCommits} commits`
+    )
+    expect(ovl.totalCommits).toBe(Number(sh(dir, 'rev-list', '--count', '--branches').trim()))
+    // The generated history spans 2020-09-13..14; the last day holds the newest commits.
+    const lastDay = ov.lastDate!
+    await time(
+      `stats: files, one day (${lastDay})`,
+      () => stats.fileStats(ctx, { scope: 'head', since: lastDay, until: lastDay }),
+      (f) => `${f.commitsAnalysed} commits, ${f.fileChanges} file changes`
+    )
+    // Responsiveness: a status refresh while the full file analysis runs.
+    const running = time(
+      'stats: files, current branch, all time',
+      () => stats.fileStats(ctx, { scope: 'head' }),
+      (f) => `${f.commitsAnalysed} commits, ${f.fileChanges} file changes, +${f.linesAdded}`
+    )
+    await new Promise((r) => setTimeout(r, 300))
+    await time('status while file statistics run', () => getStatus(ctx))
+    const full = await running
+    let added = 0
+    const numstat = execFileSync(
+      'git',
+      ['log', '--no-merges', '-M', '--numstat', '--format=', 'HEAD'],
+      {
+        cwd: dir,
+        encoding: 'utf8',
+        maxBuffer: 1 << 30
+      }
+    )
+    for (const line of numstat.split('\n')) {
+      const m = /^(\d+)\t/.exec(line)
+      if (m) added += Number(m[1])
+    }
+    expect(full.linesAdded).toBe(added)
+    await time(
+      'stats: files, current branch, all time (cached)',
+      () => stats.fileStats(ctx, { scope: 'head' }),
+      (f) => `cached=${f.cached}`
+    )
+    // Cancellation: how long until a cancelled full analysis stops (different range: not cached).
+    const t0 = performance.now()
+    const cancelled = stats.fileStats(ctx, { scope: 'local', opId: 'perf-stats-cancel' })
+    await new Promise((r) => setTimeout(r, 500))
+    cancelOp('perf-stats-cancel')
+    const t1 = performance.now()
+    const outcome = await cancelled.then(
+      () => 'finished',
+      (e: { code?: string }) => e.code ?? 'error'
+    )
+    results.push({
+      name: 'stats: cancel full file analysis',
+      ms: performance.now() - t1,
+      note: `${outcome} after cancel; started ${(t1 - t0).toFixed(0)} ms earlier`
+    })
+    expect(outcome).toBe('CANCELLED')
+
     const bigDiff = Array.from({ length: 50_000 }, (_, i) => `-old ${i}\n+new ${i}`).join('\n')
     await time('parse 100 000-line diff', () =>
       parseDiff(`diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -1,50000 +1,50000 @@\n${bigDiff}\n`)

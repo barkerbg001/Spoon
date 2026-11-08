@@ -15,6 +15,7 @@ import {
   Settings,
   SquareTerminal,
   Trash2,
+  Redo2,
   Undo2
 } from 'lucide-react'
 import { call } from '@/lib/api'
@@ -34,6 +35,7 @@ import {
   TreeView
 } from '@/views/explore/ExploreViews'
 import { PullsView } from '@/views/hosting/PullsView'
+import { StatsView } from '@/views/stats/StatsView'
 import { RepoSettingsView } from '@/views/repoSettings/RepoSettingsView'
 import { FilesAndDiff } from '@/views/history/CommitDetails'
 import type { CommitFile } from '@shared/types'
@@ -103,6 +105,8 @@ function MainView(): React.JSX.Element {
       return <TreeView key={view.rev} rev={view.rev} />
     case 'reflog':
       return <ReflogView />
+    case 'stats':
+      return <StatsView />
     case 'compare':
       return <CompareView key={view.from + '..' + view.to} from={view.from} to={view.to} />
     case 'pulls':
@@ -284,6 +288,13 @@ function Toolbar(): React.JSX.Element {
       <div className="mx-1.5 h-6 w-px bg-border" />
       {tool('Undo', <Undo2 />, () => void A.undo(r), {
         shortcut: shortcutLabel('undo'),
+        disabled:
+          r.status?.operation && r.status.operation !== 'none'
+            ? 'Finish or abort the current operation first'
+            : false
+      })}
+      {tool('Redo', <Redo2 />, () => void A.redo(r), {
+        shortcut: shortcutLabel('redo'),
         disabled:
           r.status?.operation && r.status.operation !== 'none'
             ? 'Finish or abort the current operation first'

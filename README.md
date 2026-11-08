@@ -19,7 +19,10 @@ installed, keeps your work on your machine, and asks before it does anything you
 - **Branches, remotes, tags, stashes** in the sidebar with context menus; fetch/pull/push with
   progress and cancel; force push only via an explicit `--force-with-lease` confirmation pinned to the
   remote commit you reviewed; a rejected push offers fetch + rebase/merge + push.
-- **Undo** (toolbar, Ctrl/Cmd+Z) for commits, amends, branch and tag changes, checkouts, merges,
+- **Repository statistics**: commits, contributors (with `.mailmap`), activity over time, weekday
+  and hour charts, files and lines changed, for the current branch or all local branches and any date
+  range.
+- **Undo and redo** (toolbar, Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z) for commits, amends, branch and tag changes, checkouts, merges,
   rebases, cherry-picks, reverts and resets — with a preview, and refused if the repository changed
   since.
 - **Merge, rebase, interactive rebase** (reorder/squash/fixup/reword/drop), cherry-pick, revert,
@@ -79,7 +82,7 @@ All tests create throwaway repositories in the temp folder and isolate Git confi
 - [Architecture](docs/architecture.md) and [security model](SECURITY.md)
 - [Development guide](docs/development.md)
 - [Feature matrix](docs/product/feature-matrix.md), [roadmap](docs/roadmap.md), [progress](docs/progress.md)
-- [Everyday workflows](docs/workflows.md) (undo, pushing, worktrees, compare)
+- [Everyday workflows](docs/workflows.md) (undo/redo, statistics, pushing, worktrees, compare)
 - [November 2026 audit and competitor parity report](docs/audit-2026-11.md)
 - [Performance](docs/performance.md), [packaging](docs/packaging.md), [licensing](docs/licensing.md)
 

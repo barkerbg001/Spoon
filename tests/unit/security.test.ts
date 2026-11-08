@@ -44,6 +44,32 @@ describe('isTrustedUrl', () => {
     expect(isTrustedUrl('https://example.com/', undefined, file)).toBe(false)
     expect(isTrustedUrl('not a url', undefined, file)).toBe(false)
   })
+
+  it('accepts another spelling of the same renderer file, never a different file', async () => {
+    const { mkdtempSync, realpathSync, rmSync, writeFileSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const { pathToFileURL } = await import('node:url')
+    // os.tmpdir() is an 8.3 short path on many Windows machines (C:\Users\ABCDEF~1\...).
+    const dir = mkdtempSync(join(tmpdir(), 'spoon-trust-'))
+    try {
+      const renderer = join(dir, 'index.html')
+      const evil = join(dir, 'evil.html')
+      writeFileSync(renderer, '<html></html>')
+      writeFileSync(evil, '<html></html>')
+      const real = realpathSync.native(renderer)
+      expect(isTrustedUrl(pathToFileURL(real).href, undefined, renderer)).toBe(true)
+      expect(isTrustedUrl(pathToFileURL(renderer).href, undefined, real)).toBe(true)
+      expect(isTrustedUrl(pathToFileURL(realpathSync.native(evil)).href, undefined, renderer)).toBe(
+        false
+      )
+      expect(isTrustedUrl(pathToFileURL(join(dir, 'missing.html')).href, undefined, renderer)).toBe(
+        false
+      )
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('isSafeExternalUrl', () => {

@@ -388,34 +388,52 @@ export async function pushWithRecovery(r: R, p: PushRequest): Promise<boolean> {
  * cherry-pick, revert, reset, branch/tag create/delete/rename, checkout). Shows exactly which
  * references move before asking for confirmation.
  */
-export async function undo(r: R): Promise<boolean> {
+export function undo(r: R): Promise<boolean> {
+  return undoOrRedo(r, 'undo')
+}
+
+/** Re-apply the operation most recently undone (only while nothing has changed since). */
+export function redo(r: R): Promise<boolean> {
+  return undoOrRedo(r, 'redo')
+}
+
+async function undoOrRedo(r: R, d: 'undo' | 'redo'): Promise<boolean> {
+  const Verb = d === 'undo' ? 'Undo' : 'Redo'
   let preview
   try {
-    preview = await call('undo.peek', { repo: r.path })
+    preview = await call(d === 'undo' ? 'undo.peek' : 'redo.peek', { repo: r.path })
   } catch (e) {
-    toastError(e, 'Undo')
+    toastError(e, Verb)
     return false
   }
   if (!preview) {
-    toast({ kind: 'info', title: 'Nothing to undo in this session.' })
+    toast({
+      kind: 'info',
+      title: d === 'undo' ? 'Nothing to undo in this session.' : 'Nothing to redo.'
+    })
     return false
   }
   if (preview.blockedReason) {
-    toast({ kind: 'error', title: `Cannot undo "${preview.label}"`, detail: preview.blockedReason })
+    toast({ kind: 'error', title: `Cannot ${d} "${preview.label}"`, detail: preview.blockedReason })
     return false
   }
   const ok = await confirm({
-    title: `Undo "${preview.label}"?`,
+    title: `${Verb} "${preview.label}"?`,
     description:
-      'Spoon moves these references back. Uncommitted changes are kept; if they would be overwritten, Git refuses and nothing changes. Undone commits stay recoverable from the reflog.',
+      d === 'undo'
+        ? 'Spoon moves these references back. Uncommitted changes are kept; if they would be overwritten, Git refuses and nothing changes. Undone commits stay recoverable from the reflog, and you can redo.'
+        : 'Spoon moves these references forward again, to where the operation left them. Uncommitted changes are kept; if they would be overwritten, Git refuses and nothing changes.',
     items: preview.changes,
-    confirmLabel: 'Undo'
+    confirmLabel: Verb
   })
   if (!ok) return false
   return (
-    (await run(r, 'Undo', () => call('undo.run', { repo: r.path }).then(() => true), {
-      success: `Undid "${preview.label}"`
-    })) ?? false
+    (await run(
+      r,
+      Verb,
+      () => call(d === 'undo' ? 'undo.run' : 'redo.run', { repo: r.path }).then(() => true),
+      { success: `${d === 'undo' ? 'Undid' : 'Redid'} "${preview.label}"` }
+    )) ?? false
   )
 }
 

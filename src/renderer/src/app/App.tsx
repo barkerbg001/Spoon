@@ -68,7 +68,7 @@ function useGlobalShortcuts(): void {
       // Inside text fields Mod+Z keeps its native meaning (undo typing).
       const t = e.target as HTMLElement | null
       if (
-        id === 'undo' &&
+        (id === 'undo' || id === 'redo') &&
         t &&
         (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))
       )

@@ -161,7 +161,19 @@ function killTree(pid: number | undefined): void {
   }
 }
 
+/**
+ * Operation ids that were cancelled. An operation can run several Git processes in sequence; a
+ * cancel that arrives between two of them must still stop the rest, so it is remembered and any
+ * later process started with that id is refused. Ids are unique per operation.
+ */
+const cancelledOps = new Set<string>()
+const MAX_CANCELLED = 1000
+
 export function cancelOp(opId: string): boolean {
+  cancelledOps.add(opId)
+  if (cancelledOps.size > MAX_CANCELLED) {
+    cancelledOps.delete(cancelledOps.values().next().value!)
+  }
   const cancel = running.get(opId)
   if (!cancel) return false
   cancel()
@@ -184,7 +196,13 @@ const BASE_ARGS = [
  */
 export async function git(args: string[], opts: RunOptions): Promise<RunResult> {
   if (!gitInfo) await discoverGit()
-  return processes.run(() => runGit(args, opts))
+  const refuse = (): Promise<never> =>
+    Promise.reject(new AppError('CANCELLED', 'The operation was cancelled.'))
+  if (opts.opId && cancelledOps.has(opts.opId)) return refuse()
+  return processes.run(() =>
+    // Also re-check after waiting for a free process slot.
+    opts.opId && cancelledOps.has(opts.opId) ? refuse() : runGit(args, opts)
+  )
 }
 
 function runGit(args: string[], opts: RunOptions): Promise<RunResult> {

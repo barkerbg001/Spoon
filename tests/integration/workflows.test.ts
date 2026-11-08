@@ -6,7 +6,14 @@ import * as branches from '../../src/main/git/branches'
 import * as changes from '../../src/main/git/changes'
 import * as history from '../../src/main/git/history'
 import * as ops from '../../src/main/git/ops'
-import { peekUndo, recordUndo, runUndo, type RestoreMode } from '../../src/main/git/undo'
+import {
+  peekRedo,
+  peekUndo,
+  recordUndo,
+  runRedo,
+  runUndo,
+  type RestoreMode
+} from '../../src/main/git/undo'
 import { cleanup, newRepo, openCtx, sh, tempDir, write } from './helpers'
 
 afterAll(cleanup)
@@ -360,5 +367,91 @@ describe('undo', () => {
     expect(r.exitCode).toBe(1)
     expect(await peekUndo(ctx)).toBeNull()
     await ops.control(ctx, 'abort')
+  })
+})
+
+describe('redo', () => {
+  const commitArgs = (ctx: Ctx, message: string): Parameters<typeof changes.commit>[1] => ({
+    repo: ctx.root,
+    message,
+    amend: false,
+    signoff: false,
+    noVerify: false,
+    sign: 'config',
+    allowEmpty: false
+  })
+
+  it('redoes an undone commit, keeping the index consistent both ways', async () => {
+    const ctx = await newRepo({ 'a.txt': 'a\n' })
+    write(ctx.root, 'a.txt', 'b\n')
+    await changes.stage(ctx, ['a.txt'])
+    await recordUndo(ctx, 'Commit', 'soft', () => changes.commit(ctx, commitArgs(ctx, 'second')))
+    const tip = head(ctx.root)
+    await runUndo(ctx)
+    expect(sh(ctx.root, 'diff', '--cached', '--name-only').trim()).toBe('a.txt')
+    const p = await peekRedo(ctx)
+    expect(p).toMatchObject({ label: 'Commit', blockedReason: null })
+    expect(p?.changes[0]).toMatch(/^Move main from [0-9a-f]{7} to [0-9a-f]{7}$/)
+    await runRedo(ctx)
+    expect(head(ctx.root)).toBe(tip)
+    expect(sh(ctx.root, 'status', '--porcelain').trim()).toBe('')
+    expect(await peekRedo(ctx)).toBeNull()
+    // ...and it can be undone again.
+    expect((await peekUndo(ctx))?.label).toBe('Commit')
+  })
+
+  it('redoes an interactive rebase and a create-and-checkout', async () => {
+    const ctx = await newRepo({ 'f.txt': '0\n' })
+    for (const n of ['1', '2']) {
+      write(ctx.root, `c${n}.txt`, `${n}\n`)
+      sh(ctx.root, 'add', '.')
+      sh(ctx.root, 'commit', '-qm', `c${n}`)
+    }
+    const list = sh(ctx.root, 'log', '--reverse', '--format=%H %s', 'HEAD~2..HEAD')
+      .trim()
+      .split('\n')
+      .map((l) => ({ hash: l.slice(0, 40), subject: l.slice(41) }))
+    await recordUndo(ctx, 'Interactive rebase', 'keep', () =>
+      ops.interactiveRebase(ctx, {
+        repo: ctx.root,
+        base: 'HEAD~2',
+        todo: [
+          { action: 'pick', ...list[1]! },
+          { action: 'pick', ...list[0]! }
+        ]
+      })
+    )
+    const rebased = head(ctx.root)
+    await runUndo(ctx)
+    expect(subjects(ctx.root)).toEqual(['c2', 'c1', 'initial'])
+    await runRedo(ctx)
+    expect(head(ctx.root)).toBe(rebased)
+    expect(subjects(ctx.root)).toEqual(['c1', 'c2', 'initial'])
+
+    await recordUndo(ctx, 'Create branch', 'keep', () =>
+      branches.createBranch(ctx, { repo: ctx.root, name: 'topic', checkout: true })
+    )
+    await runUndo(ctx)
+    expect(sh(ctx.root, 'branch', '--show-current').trim()).toBe('main')
+    await runRedo(ctx)
+    expect(sh(ctx.root, 'branch', '--show-current').trim()).toBe('topic')
+  })
+
+  it('drops redo after a new operation and refuses it after outside changes', async () => {
+    const ctx = await newRepo({ 'a.txt': 'a\n' })
+    write(ctx.root, 'a.txt', 'b\n')
+    await changes.stage(ctx, ['a.txt'])
+    await recordUndo(ctx, 'Commit', 'soft', () => changes.commit(ctx, commitArgs(ctx, 'one')))
+    await runUndo(ctx)
+    // A new recorded operation clears the redo history.
+    await recordUndo(ctx, 'Commit', 'soft', () => changes.commit(ctx, commitArgs(ctx, 'two')))
+    expect(await peekRedo(ctx)).toBeNull()
+
+    await runUndo(ctx)
+    sh(ctx.root, 'commit', '-qm', 'outside spoon')
+    const tip = head(ctx.root)
+    expect((await peekRedo(ctx))?.blockedReason).toMatch(/changed after "Commit"/)
+    await expect(runRedo(ctx)).rejects.toMatchObject({ code: 'STALE' })
+    expect(head(ctx.root)).toBe(tip)
   })
 })

@@ -1,6 +1,6 @@
 # Progress and verification log
 
-Updated 2026-11-07. This records what has actually been run, where, and with what result. Anything
+Updated 2026-11-08. This records what has actually been run, where, and with what result. Anything
 not listed here should be treated as untested.
 
 ## Test environment
@@ -9,7 +9,23 @@ not listed here should be treated as untested.
 - Git 2.33.0.windows.2, no Git LFS installed
 - Node.js 22.14 with npm, Electron 44.7
 
-## Latest results (2026-11-07, Windows 11)
+## Latest results (2026-11-08, Windows 11)
+
+Second pass: Repository Statistics, redo, sticky cancellation, short-path trust check. Details in the
+[audit, §7](audit-2026-11.md#7-second-pass--2026-11-08-repository-statistics-redo-fixes).
+
+| Check                                       | Command                                                                                                               | Result                                                                                                                                |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Baseline before changes                     | `npm run check`                                                                                                       | Passed: 10 files / 96 tests                                                                                                           |
+| Full gate                                   | `npm run check`                                                                                                       | Passed: typecheck, lint, format, 12 files / 115 tests                                                                                 |
+| End-to-end (dev build)                      | `npm run test:e2e`                                                                                                    | 14 passed (4 app + 7 workflows + 3 statistics)                                                                                        |
+| Benchmark                                   | `npm run perf`                                                                                                        | Passed; statistics timings in the audit §7 (overview of 50 000 commits 1.8 s)                                                         |
+| Packaging                                   | `npm run package:dir`                                                                                                 | Passed: `dist/win-unpacked/Spoon.exe`, unsigned                                                                                       |
+| Packaged app                                | `SPOON_E2E_EXE=dist\win-unpacked\Spoon.exe npx playwright test tests/e2e/stats.spec.ts tests/e2e/workflows.spec.ts`   | 10 passed against the packaged executable                                                                                             |
+| Packaged app from an 8.3 short path         | same, with `SPOON_E2E_EXE=C:\Users\BARKE_~1\DOCUME~1\RECREA~1\Spoon\dist\WIN-UN~1\Spoon.exe`, statistics fixture test | Passed                                                                                                                                |
+| CI (GitHub Actions run 7, commit `c3b6abd`) | `.github/workflows/ci.yml`                                                                                            | macOS and Linux: full suite incl. E2E passed. Windows: E2E step failed; the log needs a GitHub sign-in, not available in this session |
+
+## Results (2026-11-07, Windows 11)
 
 Changes and reasoning are in the [November audit](audit-2026-11.md).
 

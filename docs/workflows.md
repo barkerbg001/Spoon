@@ -3,7 +3,7 @@
 A short guide to workflows whose behavior is not obvious from the UI. For the full feature list see
 the [feature matrix](product/feature-matrix.md).
 
-## Undo the last Git operation
+## Undo and redo Git operations
 
 Click **Undo** in the toolbar, press **Ctrl+Z** (Windows/Linux) or **Cmd+Z** (macOS) outside a text
 field, or run "Undo last Git operation…" from the command palette.
@@ -17,7 +17,11 @@ field, or run "Undo last Git operation…" from the command palette.
 - You can undo several steps in a row (up to 30 per repository while Spoon is open).
 - Undo is refused if a reference it would move has changed since (for example you committed from a
   terminal). Use the **Reflog** view in that case.
-- Not covered: staging, discarding, stashes and pushes. There is no redo.
+- **Redo** (toolbar **Redo**, **Ctrl+Shift+Z** / **Cmd+Shift+Z**, or "Redo undone Git operation…")
+  re-applies what you just undid, again with a preview. Redo is only available until you run another
+  undoable operation, and it is refused if anything changed since the undo.
+- Not covered: staging, discarding, stashes and pushes. The undo history lives in memory and is
+  cleared when Spoon closes.
 
 ## Pushing
 
@@ -54,3 +58,32 @@ and the file list shows the combined difference.
 - **Remove…** shows the worktree's uncommitted changes first. Git refuses to remove a worktree with
   changes unless you tick "Discard these N change(s)". The branch itself is kept. You cannot remove the
   main worktree or the one the current tab is working in.
+
+## Repository statistics
+
+Click **Statistics** in the sidebar (under Reflog) or run "Show repository statistics" from the
+command palette. The header names the repository, the branches counted and the date range.
+
+- **Branches:** _Current branch_ counts the commits HEAD can reach (works with a detached HEAD too).
+  _All local branches_ counts commits reachable from any branch under `refs/heads`; remote-tracking
+  branches and tags are not included. A commit that several branches contain is counted once.
+- **Date range:** _Last 30 days_, _Last 90 days_ (both end today and include it, by your computer's
+  calendar), _All time_, or _Custom_ (both days included). Dates are **author dates on the author's
+  own clock** — the time zone recorded in each commit — so a commit made at 23:30 in New York counts
+  on that day even though it was already the next day in UTC. The activity, weekday and hour charts
+  use the same dates.
+- **Overview:** total commits (merges shown separately), unique contributors, active days, first and
+  latest commit, commit activity over time (per day, week starting Monday, or month depending on the
+  range), and commits by weekday and by hour. Every chart has **Show values** for a table.
+- **Contributors:** grouped by e-mail after applying the repository's `.mailmap`, shown with their
+  most used name. _Commits_ excludes merges; _Merges_ is listed separately. Click a column heading to
+  sort.
+- **Files and lines** load separately (they read every commit's diff and can take a while on large
+  histories; there is a **Cancel** button). Merge commits are excluded because a merge's diff repeats
+  work already counted. A _file change_ is one file in one commit. Renames are detected (`-M`), count
+  once for the new name with only the edited lines, and older changes are credited to the newest name.
+  Binary files count as file changes but add no line counts. Results are reused while the branch tips,
+  range and `.mailmap` are unchanged.
+- **Shallow clones** are labelled: the numbers cover only the history present on your computer.
+- Statistics refresh automatically when commits or branches change, including commits made outside
+  Spoon. Statistics never modify the repository.

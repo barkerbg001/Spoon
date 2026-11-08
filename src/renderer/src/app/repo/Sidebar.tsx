@@ -1,6 +1,7 @@
 import * as React from 'react'
 import {
   Archive,
+  BarChart3,
   ArrowDownToLine,
   ArrowUpFromLine,
   Check,
@@ -353,6 +354,12 @@ export function Sidebar(): React.JSX.Element {
             label="Reflog"
             active={view.kind === 'reflog'}
             onClick={() => r.setView({ kind: 'reflog' })}
+          />
+          <Item
+            icon={<BarChart3 />}
+            label="Statistics"
+            active={view.kind === 'stats'}
+            onClick={() => r.setView({ kind: 'stats' })}
           />
         </div>
 
