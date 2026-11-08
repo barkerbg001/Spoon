@@ -23,7 +23,7 @@ Second pass: Repository Statistics, redo, sticky cancellation, short-path trust 
 | Packaging                                   | `npm run package:dir`                                                                                                 | Passed: `dist/win-unpacked/Spoon.exe`, unsigned                                                                                       |
 | Packaged app                                | `SPOON_E2E_EXE=dist\win-unpacked\Spoon.exe npx playwright test tests/e2e/stats.spec.ts tests/e2e/workflows.spec.ts`   | 10 passed against the packaged executable                                                                                             |
 | Packaged app from an 8.3 short path         | same, with `SPOON_E2E_EXE=C:\Users\BARKE_~1\DOCUME~1\RECREA~1\Spoon\dist\WIN-UN~1\Spoon.exe`, statistics fixture test | Passed                                                                                                                                |
-| CI (GitHub Actions run 7, commit `c3b6abd`) | `.github/workflows/ci.yml`                                                                                            | macOS and Linux: full suite incl. E2E passed. Windows: E2E step failed; the log needs a GitHub sign-in, not available in this session |
+| CI (GitHub Actions run 7, commit `c3b6abd`) | `.github/workflows/ci.yml`                                                                                            | macOS and Linux: full suite incl. E2E passed. Windows: E2E step failed — a real race that committed untracked files; fixed (audit §8) |
 
 ## Results (2026-11-07, Windows 11)
 

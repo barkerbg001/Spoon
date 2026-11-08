@@ -455,3 +455,40 @@ describe('redo', () => {
     expect(head(ctx.root)).toBe(tip)
   })
 })
+
+describe('commit with "stage all"', () => {
+  const args = (ctx: Ctx): Parameters<typeof changes.commit>[1] => ({
+    repo: ctx.root,
+    message: 'msg',
+    amend: false,
+    signoff: false,
+    noVerify: false,
+    sign: 'config',
+    allowEmpty: false,
+    stageAllIfNothingStaged: true
+  })
+
+  it('commits only the staged file when something is already staged (stale UI view)', async () => {
+    const ctx = await newRepo({ 'a.txt': 'a\n', 'b.txt': 'b\n' })
+    write(ctx.root, 'a.txt', 'a2\n')
+    write(ctx.root, 'b.txt', 'b2\n')
+    write(ctx.root, 'notes.txt', 'untracked\n')
+    sh(ctx.root, 'add', 'a.txt')
+    await changes.commit(ctx, args(ctx))
+    expect(sh(ctx.root, 'show', '--name-only', '--format=', 'HEAD').trim()).toBe('a.txt')
+    const st = sh(ctx.root, 'status', '--porcelain')
+    expect(st).toContain(' M b.txt')
+    expect(st).toContain('?? notes.txt')
+  })
+
+  it('stages everything when the index really is empty', async () => {
+    const ctx = await newRepo({ 'a.txt': 'a\n' })
+    write(ctx.root, 'a.txt', 'a2\n')
+    write(ctx.root, 'new file.txt', 'n\n')
+    await changes.commit(ctx, args(ctx))
+    expect(
+      sh(ctx.root, 'show', '--name-only', '--format=', 'HEAD').trim().split('\n').sort()
+    ).toEqual(['a.txt', 'new file.txt'])
+    expect(sh(ctx.root, 'status', '--porcelain').trim()).toBe('')
+  })
+})

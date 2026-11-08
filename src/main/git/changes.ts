@@ -7,7 +7,7 @@ import { buildPartialPatch, parseDiff } from '@shared/diff'
 import type { CommandResult, DiffResult, DiffSource } from '@shared/types'
 import { AppError } from '../errors'
 import { isPreviewableImage } from './history'
-import { mgit, rgit, type RepoCtx } from './repo'
+import { getStatus, mgit, rgit, type RepoCtx } from './repo'
 
 type DiffOptions = { ignoreWhitespace?: boolean; context?: number; maxBytes?: number }
 
@@ -223,6 +223,10 @@ export async function commit(ctx: RepoCtx, a: ApiArgs<'commit.create'>): Promise
   const args = ['commit']
   const message = a.message.trim()
   if (!message && !a.amend) throw new AppError('VALIDATION', 'Enter a commit message.')
+  if (a.stageAllIfNothingStaged && !a.amend) {
+    const st = await getStatus(ctx)
+    if (st.staged.length === 0) await mgit(ctx, ['add', '-A'])
+  }
   if (a.amend) args.push('--amend')
   if (message) args.push('-F', '-')
   else args.push('--no-edit')

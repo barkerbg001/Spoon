@@ -92,7 +92,8 @@ export function CommitBox(): React.JSX.Element {
     setBusy(true)
     setHookOutput(null)
     try {
-      if (stageAllFirst) await call('index.stageAll', { repo: r.path })
+      // Stage-all is decided by the main process against the real index (see the API contract):
+      // the status shown here may not yet include a file that was just staged.
       const res = await call('commit.create', {
         repo: r.path,
         message,
@@ -100,7 +101,8 @@ export function CommitBox(): React.JSX.Element {
         signoff,
         noVerify,
         sign,
-        allowEmpty: false
+        allowEmpty: false,
+        stageAllIfNothingStaged: stageAllFirst
       })
       const out = [res.stdout, res.stderr]
         .filter((x) => x.trim())

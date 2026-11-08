@@ -172,6 +172,34 @@ test('stage individual lines, commit, then undo the commit', async () => {
   }
 })
 
+test('commit right after staging commits only the staged file', async () => {
+  // Regression (Windows CI): the commit box chose "stage all" from a status that did not yet show
+  // a file that had just been staged, and swept an untracked file into the commit. Here the file is
+  // staged outside Spoon and the commit is sent before Spoon's watcher refreshes the status.
+  const repo = dir('stale-stage')
+  git(repo, 'init', '-q', '-b', 'main')
+  commitFile(repo, 'app.ts', 'export const a = 1\n', 'initial')
+  writeFileSync(join(repo, 'app.ts'), 'export const a = 2\n')
+  writeFileSync(join(repo, 'notes.txt'), 'untracked\n')
+
+  const { app, page } = await launch('stale-stage', repo)
+  try {
+    const message = page.getByRole('textbox', { name: 'Commit message' })
+    await message.fill('Only app.ts')
+    await expect(page.getByRole('button', { name: /Stage all and commit \(2\)/ })).toBeVisible()
+    execFileSync('git', ['add', 'app.ts'], { cwd: repo, env })
+    await message.press(`${Mod}+Enter`)
+    await expect.poll(() => subjects(repo)[0]).toBe('Only app.ts')
+    expect(git(repo, 'show', '--name-only', '--format=', 'HEAD').trim()).toBe('app.ts')
+    expect(git(repo, 'status', '--porcelain')).toContain('?? notes.txt')
+  } catch (e) {
+    await failShot(page)
+    throw e
+  } finally {
+    await app.close()
+  }
+})
+
 test('interactive rebase drops and fixes up commits; Ctrl/Cmd+Z undoes it', async () => {
   const repo = dir('irebase')
   git(repo, 'init', '-q', '-b', 'main')

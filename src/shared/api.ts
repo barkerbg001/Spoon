@@ -295,7 +295,14 @@ export const api = {
       signoff: z.boolean().default(false),
       noVerify: z.boolean().default(false),
       sign: z.enum(['config', 'force', 'never']).default('config'),
-      allowEmpty: z.boolean().default(false)
+      allowEmpty: z.boolean().default(false),
+      /**
+       * "Stage all and commit": stage everything first, but only if the index really has nothing
+       * staged when the commit runs. The UI's view of the index can lag behind a staging action
+       * that has just happened; deciding here, under the repository lock, never sweeps unstaged or
+       * untracked files into a commit the user meant to limit to staged changes.
+       */
+      stageAllIfNothingStaged: z.boolean().default(false)
     })
   ),
   'commit.lastMessage': m<string>()(z.object(repo)),
