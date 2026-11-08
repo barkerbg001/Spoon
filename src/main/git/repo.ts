@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
-import type { RepoOperation, RepoStatus, RepoSummary } from '@shared/types'
+import type { CommandResult, RepoOperation, RepoStatus, RepoSummary } from '@shared/types'
 import { AppError } from '../errors'
 import { git, type RunOptions, type RunResult } from './runner'
 import { parseStatusV2 } from './parse'
@@ -206,5 +206,30 @@ export async function getSummary(ctx: RepoCtx): Promise<RepoSummary> {
       status.unstaged.length +
       status.untracked.length +
       status.conflicted.length
+  }
+}
+
+/**
+ * Run an operation that may legitimately stop with conflicts. A stop with
+ * conflicts is returned as a result (exitCode 1) instead of an error so the UI
+ * can switch to the conflict workspace.
+ */
+export async function allowConflicts(
+  ctx: RepoCtx,
+  fn: () => Promise<CommandResult>
+): Promise<CommandResult> {
+  try {
+    const r = await fn()
+    return { stdout: r.stdout, stderr: r.stderr, exitCode: r.exitCode }
+  } catch (e) {
+    if (!(e instanceof AppError) || e.code === 'CANCELLED') throw e
+    const status = await getStatus(ctx)
+    if (
+      status.conflicted.length > 0 ||
+      (status.operation !== 'none' && status.operation !== 'bisect')
+    ) {
+      return { stdout: '', stderr: e.detail ?? e.message, exitCode: 1 }
+    }
+    throw e
   }
 }

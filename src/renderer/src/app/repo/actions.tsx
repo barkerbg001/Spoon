@@ -2,7 +2,7 @@ import type { CommandResult, Commit, FileChange } from '@shared/types'
 import type { ApiArgs } from '@shared/api'
 import { ApiError, call, newOpId } from '@/lib/api'
 import { short } from '@/lib/utils'
-import { endOp, openRepository, startOp, toast, toastError } from '../state'
+import { app, closeTab, endOp, openRepository, startOp, toast, toastError } from '../state'
 import { confirm, prompt, validRefName } from '../dialogs'
 import type { RepoContextValue } from './context'
 
@@ -164,6 +164,10 @@ export async function pull(r: R): Promise<void> {
 }
 
 export async function push(r: R, branchArg?: string): Promise<void> {
+  if (!branchArg && !r.status && !r.refs) {
+    toast({ kind: 'info', title: 'The repository is still loading; try again in a moment.' })
+    return
+  }
   const branch = branchArg ?? currentBranch(r)
   if (!branch) {
     toast({
@@ -226,21 +230,29 @@ export async function push(r: R, branchArg?: string): Promise<void> {
   if (!v) return
   const remote = String(v['remote'])
   const remoteBranch = String(v['remoteBranch'])
-  if (v['force']) {
+  const force = !!v['force']
+  let expectedRemoteOid: string | null | undefined
+  if (force) {
+    // The lease is pinned to exactly the remote commit shown here, not to whatever the
+    // remote-tracking ref says when the push runs (a background fetch may move it).
+    expectedRemoteOid = await call('repo.resolve', {
+      repo: r.path,
+      rev: `refs/remotes/${remote}/${remoteBranch}`
+    }).catch(() => null)
     let lost: Commit[] = []
-    try {
+    if (expectedRemoteOid) {
       lost = await call('op.previewCommits', {
         repo: r.path,
         from: branch,
-        to: `${remote}/${remoteBranch}`,
+        to: expectedRemoteOid,
         limit: 200
-      })
-    } catch {
-      lost = []
+      }).catch(() => [] as Commit[])
     }
     const ok = await confirm({
       title: 'Force push?',
-      description: `This rewrites ${remote}/${remoteBranch}. The push is refused if the remote changed since your last fetch (force-with-lease). It cannot be undone from Spoon; collaborators who based work on the old commits will need to recover.`,
+      description: expectedRemoteOid
+        ? `This rewrites ${remote}/${remoteBranch}, which your last fetch saw at ${short(expectedRemoteOid)}. The push uses --force-with-lease pinned to that commit, so it is refused if anyone pushed since. It cannot be undone from Spoon; collaborators who based work on the old commits will need to recover.`
+        : `Spoon has no record of ${remote}/${remoteBranch} (never fetched). The push is only allowed if that branch does not exist on the remote.`,
       items: lost.map((c) => `${short(c.hash)}  ${c.subject}`),
       details: lost.length ? (
         <p className="text-[0.92em]">
@@ -257,21 +269,153 @@ export async function push(r: R, branchArg?: string): Promise<void> {
     })
     if (!ok) return
   }
-  await runNetwork(
+  await pushWithRecovery(r, {
+    branch,
+    remote,
+    remoteBranch,
+    setUpstream: !!v['setUpstream'],
+    force,
+    expectedRemoteOid,
+    tags: !!v['tags']
+  })
+}
+
+interface PushRequest {
+  branch: string
+  remote: string
+  remoteBranch: string
+  setUpstream: boolean
+  force: boolean
+  expectedRemoteOid?: string | null
+  tags: boolean
+}
+
+/**
+ * Push, and when the remote rejects it, explain why and offer the next step instead of a bare
+ * error: integrate the remote commits (rebase or merge) and push again, or fetch to review what
+ * changed after a refused force push.
+ */
+export async function pushWithRecovery(r: R, p: PushRequest): Promise<boolean> {
+  const opId = newOpId()
+  startOp({ opId, label: `Pushing ${p.branch}`, repo: r.path, cancellable: true })
+  let rejected: ApiError | null = null
+  try {
+    await call('remote.push', {
+      repo: r.path,
+      remote: p.remote,
+      branch: p.branch,
+      remoteBranch: p.remoteBranch,
+      setUpstream: p.setUpstream,
+      forceWithLease: p.force,
+      ...(p.force ? { expectedRemoteOid: p.expectedRemoteOid } : {}),
+      tags: p.tags,
+      opId
+    })
+    toast({ kind: 'success', title: `Pushed ${p.branch} to ${p.remote}` })
+    return true
+  } catch (e) {
+    if (e instanceof ApiError && (e.code === 'PUSH_REJECTED' || e.code === 'LEASE_REJECTED'))
+      rejected = e
+    else toastError(e, 'Push')
+  } finally {
+    endOp(opId)
+    await r.refresh('all')
+  }
+  if (!rejected) return false
+  const target = `${p.remote}/${p.remoteBranch}`
+  if (rejected.code === 'LEASE_REJECTED') {
+    const ok = await confirm({
+      title: 'Force push refused',
+      description: `${target} changed since you reviewed it, so Spoon did not overwrite it. Fetch ${p.remote} to see the new commits before deciding what to do.`,
+      details: (
+        <pre className="max-h-32 overflow-auto rounded bg-muted p-2 font-mono text-[11px] whitespace-pre-wrap">
+          {rejected.detail}
+        </pre>
+      ),
+      confirmLabel: `Fetch ${p.remote}`
+    })
+    if (ok) await fetchAll(r, p.remote)
+    return false
+  }
+  const busy = r.status?.operation && r.status.operation !== 'none'
+  const v = await prompt({
+    title: 'Push rejected',
+    description: `${target} has commits that ${p.branch} does not have. Integrate them first, then push again.`,
+    fields: [
+      {
+        name: 'strategy',
+        label: 'Next step',
+        type: 'select',
+        initial: 'rebase',
+        options: [
+          { value: 'rebase', label: `Fetch, rebase ${p.branch} onto ${target}, then push` },
+          { value: 'merge', label: `Fetch, merge ${target} into ${p.branch}, then push` },
+          { value: 'fetch', label: `Only fetch ${p.remote} (review before integrating)` }
+        ]
+      }
+    ],
+    validate: () => (busy ? 'Finish or abort the current operation first.' : null),
+    confirmLabel: 'Continue'
+  })
+  if (!v) return false
+  const strategy = String(v['strategy'])
+  if (!(await fetchAll(r, p.remote))) return false
+  if (strategy === 'fetch') return false
+  if (currentBranch(r) !== p.branch && r.refs?.head.branch !== p.branch) {
+    toast({
+      kind: 'error',
+      title: `Check out ${p.branch} to integrate ${target} into it.`
+    })
+    return false
+  }
+  const integrated = await runOp(
     r,
-    `Pushing ${branch}`,
-    (opId) =>
-      call('remote.push', {
-        repo: r.path,
-        remote,
-        branch,
-        remoteBranch,
-        setUpstream: !!v['setUpstream'],
-        forceWithLease: !!v['force'],
-        tags: !!v['tags'],
-        opId
-      }),
-    `Pushed ${branch} to ${remote}`
+    strategy === 'rebase' ? 'Rebase' : 'Merge',
+    () =>
+      strategy === 'rebase'
+        ? call('op.rebase', { repo: r.path, onto: target })
+        : call('op.merge', { repo: r.path, ref: target, mode: 'default' }),
+    strategy === 'rebase' ? `Rebased onto ${target}` : `Merged ${target}`
+  )
+  if (!integrated) return false
+  return pushWithRecovery(r, { ...p, force: false, expectedRemoteOid: undefined })
+}
+
+// Undo ----------------------------------------------------------------------------
+
+/**
+ * Undo the most recent undoable operation (commit, amend, merge, rebase, interactive rebase,
+ * cherry-pick, revert, reset, branch/tag create/delete/rename, checkout). Shows exactly which
+ * references move before asking for confirmation.
+ */
+export async function undo(r: R): Promise<boolean> {
+  let preview
+  try {
+    preview = await call('undo.peek', { repo: r.path })
+  } catch (e) {
+    toastError(e, 'Undo')
+    return false
+  }
+  if (!preview) {
+    toast({ kind: 'info', title: 'Nothing to undo in this session.' })
+    return false
+  }
+  if (preview.blockedReason) {
+    toast({ kind: 'error', title: `Cannot undo "${preview.label}"`, detail: preview.blockedReason })
+    return false
+  }
+  const ok = await confirm({
+    title: `Undo "${preview.label}"?`,
+    description:
+      'Spoon moves these references back. Uncommitted changes are kept; if they would be overwritten, Git refuses and nothing changes. Undone commits stay recoverable from the reflog.',
+    items: preview.changes,
+    confirmLabel: 'Undo'
+  })
+  if (!ok) return false
+  return (
+    (await run(r, 'Undo', () => call('undo.run', { repo: r.path }).then(() => true), {
+      success: `Undid "${preview.label}"`
+    })) ?? false
   )
 }
 
@@ -311,6 +455,18 @@ export async function createBranch(r: R, start?: string): Promise<void> {
 
 /** Checkout; on conflicting local changes offer an explicit stash-and-checkout choice. */
 export async function checkout(r: R, ref: string, track = false): Promise<void> {
+  const elsewhere = r.refs?.worktrees.find(
+    (w) => w.branch === ref && samePath(w.path) !== samePath(r.path)
+  )
+  if (elsewhere) {
+    const open = await confirm({
+      title: `${ref} is checked out in another worktree`,
+      description: `Git allows a branch to be checked out in only one worktree at a time. It is checked out in ${elsewhere.path}.`,
+      confirmLabel: 'Open that worktree'
+    })
+    if (open) await openRepository(elsewhere.path)
+    return
+  }
   try {
     await call('branch.checkout', { repo: r.path, ref, track })
     toast({ kind: 'success', title: `Checked out ${ref}` })
@@ -426,7 +582,7 @@ export async function deleteRemoteBranch(r: R, remoteBranch: string): Promise<vo
   await runNetwork(
     r,
     `Deleting ${remoteBranch}`,
-    () => call('branch.deleteRemote', { repo: r.path, remote, name }),
+    (opId) => call('branch.deleteRemote', { repo: r.path, remote, name, opId }),
     `Deleted ${remoteBranch}`
   )
 }
@@ -955,23 +1111,58 @@ export async function addWorktree(r: R, ref?: string): Promise<void> {
 }
 
 export async function removeWorktree(r: R, path: string): Promise<void> {
+  let st
+  try {
+    st = await call('worktree.status', { repo: r.path, path })
+  } catch (e) {
+    toastError(e, 'Remove worktree')
+    return
+  }
+  if (st.main || st.current) {
+    toast({
+      kind: 'error',
+      title: st.main
+        ? 'The main worktree cannot be removed.'
+        : 'You cannot remove the worktree you are working in. Open another worktree and remove it from there.'
+    })
+    return
+  }
+  const dirty = st.changes.length > 0
   const ok = await confirm({
-    title: 'Remove worktree?',
-    description:
-      'The worktree folder is deleted. Git refuses if it has uncommitted changes unless you force it.',
-    items: [path],
+    title: `Remove worktree${st.branch ? ` for ${st.branch}` : ''}?`,
+    description: st.missing
+      ? `The folder ${st.path} no longer exists; only Git's record of it is removed.`
+      : dirty
+        ? `The folder ${st.path} is deleted. It has ${st.changes.length} uncommitted change(s), listed below. Git refuses to remove it unless you choose to discard them.`
+        : `The folder ${st.path} is deleted. It has no uncommitted changes${st.branch ? `; the branch ${st.branch} itself is kept` : ''}.`,
+    items: dirty ? st.changes : undefined,
     confirmLabel: 'Remove',
     destructive: true,
-    checkbox: { label: 'Force (discard uncommitted changes in that worktree)', initial: false }
+    checkbox:
+      dirty || st.locked
+        ? {
+            label: dirty
+              ? `Discard these ${st.changes.length} change(s) and remove anyway`
+              : 'The worktree is locked; remove it anyway',
+            initial: false
+          }
+        : undefined
   })
   if (!ok) return
-  await run(
+  const done = await run(
     r,
     'Remove worktree',
-    () => call('worktree.remove', { repo: r.path, path, force: ok.checked }),
+    () => call('worktree.remove', { repo: r.path, path, force: !!ok.checked }).then(() => true),
     { success: 'Worktree removed' }
   )
+  if (done) {
+    // Close a tab that still shows the removed worktree.
+    const key = samePath(path)
+    for (const t of app.get().tabs) if (t.path && samePath(t.path) === key) closeTab(t.id)
+  }
 }
+
+const samePath = (p: string): string => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
 
 export function updateSubmodules(r: R): Promise<boolean> {
   return runNetwork(

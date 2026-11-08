@@ -60,6 +60,8 @@ export async function log(
   ]
   if (s?.text) args.push(`--grep=${s.text}`, '-i', '--fixed-strings')
   if (s?.author) args.push(`--author=${s.author}`, '-i', '--fixed-strings')
+  // Pickaxe: commits that change the number of occurrences of the text (adds or removes it).
+  if (s?.content) args.push(`-S${s.content}`)
   if (s?.since) args.push(`--since=${s.since}`)
   if (s?.until) args.push(`--until=${s.until} 23:59:59`)
   if (a.refs?.length) args.push('--end-of-options', ...a.refs)
@@ -126,6 +128,19 @@ export async function commitDetails(ctx: RepoCtx, hash: string): Promise<CommitD
     files,
     signature: signed ? 'Signed (signature not verified by Spoon)' : null
   }
+}
+
+export async function remoteContains(ctx: RepoCtx, rev: string): Promise<string[]> {
+  const r = await rgit(
+    ctx,
+    ['for-each-ref', '--count=5', '--format=%(refname:short)', `--contains=${rev}`, 'refs/remotes'],
+    { okCodes: [0, 1, 128, 129] }
+  )
+  if (r.exitCode !== 0) return []
+  return r.stdout
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l && !l.endsWith('/HEAD'))
 }
 
 export function compareFiles(ctx: RepoCtx, from: string, to: string | null): Promise<CommitFile[]> {

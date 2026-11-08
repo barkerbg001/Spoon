@@ -1,15 +1,30 @@
 # Progress and verification log
 
-Updated 2026-10-11. This records what has actually been run, where, and with what result. Anything
+Updated 2026-11-07. This records what has actually been run, where, and with what result. Anything
 not listed here should be treated as untested.
 
 ## Test environment
 
-- Windows 11 (10.0.26200), x64
+- Windows 11 Pro (10.0.26300), x64 (2026-11-07); Windows 11 (10.0.26200) for the October run
 - Git 2.33.0.windows.2, no Git LFS installed
-- Node.js with npm, Electron 44.7
+- Node.js 22.14 with npm, Electron 44.7
 
-## Latest results (2026-10-11, Windows 11)
+## Latest results (2026-11-07, Windows 11)
+
+Changes and reasoning are in the [November audit](audit-2026-11.md).
+
+| Check                   | Command                                                                                     | Result                                                                                                                                                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Baseline before changes | `npm run typecheck`, `lint`, `format:check`, `npm test`                                     | All passed; 8 files / 75 tests                                                                                                                                                                             |
+| Full gate               | `npm run check`                                                                             | Passed: typecheck, lint (0 problems), format, 10 files / 96 tests (unit 45, integration 51)                                                                                                                |
+| End-to-end (dev build)  | `npm run test:e2e`                                                                          | 11 passed (4 existing + 7 new workflow tests)                                                                                                                                                              |
+| Packaging               | `npm run package:dir`                                                                       | Passed: `dist/win-unpacked/Spoon.exe`, NotSigned (no certificate configured)                                                                                                                               |
+| Packaged app smoke test | `SPOON_E2E_EXE=dist\win-unpacked\Spoon.exe npx playwright test tests/e2e/workflows.spec.ts` | 7 passed against the packaged executable: line staging + commit + Undo; interactive rebase + Ctrl+Z; rejected push recovery; stale lease refusal; rebase conflict + Abort; dirty worktree removal; compare |
+| Installers              | —                                                                                           | Not rebuilt or installed in this pass                                                                                                                                                                      |
+| Performance benchmark   | —                                                                                           | Not re-run (no performance work in this pass)                                                                                                                                                              |
+| macOS, Linux            | —                                                                                           | Not run                                                                                                                                                                                                    |
+
+## Previous results (2026-10-11, Windows 11)
 
 | Check                                                                                                                           | Command                                                         | Result                                                                                                                                                |
 | ------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -29,7 +44,8 @@ not listed here should be treated as untested.
 ## Not yet verified
 
 - **macOS and Linux**: nothing has been run. Packaging targets are configured; CI is set up to run
-  the full suite on all three OSes but has not run yet because the project has no remote.
+  the full suite on all three OSes (remote: https://github.com/barkerbg001/Spoon); CI results not
+  yet reviewed.
 - **Installers**: the NSIS installers were built but not installed/uninstalled (avoiding changes to
   the development machine). Windows arm64 build not launched (no arm64 hardware).
 - **Hosting services**: GitHub, GitLab, Bitbucket Cloud and Azure DevOps providers are tested only

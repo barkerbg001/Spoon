@@ -15,6 +15,7 @@ import {
 import type {
   BlameLine,
   BlobContent,
+  Commit,
   CommitFile,
   FileLogEntry,
   ReflogEntry,
@@ -636,23 +637,57 @@ export function CompareView({ from, to }: { from: string; to: string }): React.J
     () => call('history.compareFiles', { repo: r.path, from, to: toWorktree ? null : to }),
     [r.path, from, to, r.historyVersion, toWorktree ? r.statusVersion : 0]
   )
+  // Both directions: what `to` has that `from` lacks, and the reverse (ahead / behind).
   const commits = useLoad(
     () =>
       toWorktree
-        ? Promise.resolve([])
-        : call('op.previewCommits', { repo: r.path, from, to, limit: 1000 }),
-    [r.path, from, to]
+        ? Promise.resolve({ onlyTo: [] as Commit[], onlyFrom: [] as Commit[] })
+        : Promise.all([
+            call('op.previewCommits', { repo: r.path, from, to, limit: 1000 }),
+            call('op.previewCommits', { repo: r.path, from: to, to: from, limit: 1000 })
+          ]).then(([onlyTo, onlyFrom]) => ({ onlyTo, onlyFrom })),
+    [r.path, from, to, r.historyVersion]
   )
   const valid = (s: string): boolean => !!s.trim() && !/\s|^-/.test(s)
+  const count = (list: Commit[] | undefined): string =>
+    list ? `${list.length}${list.length === 1000 ? '+' : ''}` : '…'
+  const side = (label: string, list: Commit[] | undefined, testId: string): React.ReactNode => (
+    <details className="min-w-0" data-testid={testId}>
+      <summary className="cursor-pointer select-none">
+        <span className="font-medium text-foreground">{count(list)}</span> {label}
+      </summary>
+      {list && list.length > 0 && (
+        <ul className="mt-1 max-h-40 overflow-auto rounded border bg-background font-mono text-[11px]">
+          {list.map((c) => (
+            <li key={c.hash} className="flex gap-2 px-2 py-0.5" title={c.subject}>
+              <span className="shrink-0 text-muted-foreground">{short(c.hash)}</span>
+              <span className="truncate">{c.subject}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </details>
+  )
 
   const top = (
-    <div className="border-b p-2 text-[0.88em] text-muted-foreground">
+    <div className="space-y-1 border-b p-2 text-[0.88em] text-muted-foreground">
       {files.error ? (
         <span className="text-destructive">{files.error}</span>
       ) : toWorktree ? (
         'Changes between the revision and your working tree (including uncommitted changes).'
       ) : (
-        `${commits.data?.length ?? '…'}${commits.data?.length === 1000 ? '+' : ''} commit(s) in ${to} that are not in ${from}.`
+        <>
+          {side(
+            `commit(s) in ${to} that are not in ${from}`,
+            commits.data?.onlyTo,
+            'compare-only-to'
+          )}
+          {side(
+            `commit(s) in ${from} that are not in ${to}`,
+            commits.data?.onlyFrom,
+            'compare-only-from'
+          )}
+        </>
       )}
     </div>
   )

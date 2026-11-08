@@ -31,6 +31,22 @@ export function CommitBox(): React.JSX.Element {
   const [busy, setBusy] = React.useState(false)
   const [hookOutput, setHookOutput] = React.useState<string | null>(null)
   const beforeAmend = React.useRef<string>('')
+  /** Remote branches that already contain HEAD; amending rewrites a published commit. */
+  const [publishedIn, setPublishedIn] = React.useState<string[]>([])
+  const headOid = s?.head.oid ?? null
+  React.useEffect(() => {
+    if (!amend || !headOid) {
+      setPublishedIn([])
+      return
+    }
+    let live = true
+    call('history.remoteContains', { repo: r.path, rev: headOid })
+      .then((list) => live && setPublishedIn(list))
+      .catch(() => live && setPublishedIn([]))
+    return () => {
+      live = false
+    }
+  }, [amend, headOid, r.path])
   const ref = React.useRef<HTMLTextAreaElement>(null)
 
   React.useEffect(() => {
@@ -199,6 +215,15 @@ export function CommitBox(): React.JSX.Element {
           </DropdownMenu>
         </span>
       </div>
+      {amend && publishedIn.length > 0 && (
+        <p
+          role="alert"
+          className="mt-1.5 rounded border border-modified/40 bg-modified/10 px-2 py-1 text-[0.85em]"
+        >
+          The last commit is already on {publishedIn.join(', ')}. Amending rewrites it, so pushing
+          afterwards needs a force push and collaborators must re-sync.
+        </p>
+      )}
       <Tip content={blocked ?? `${isMac() ? '⌘' : 'Ctrl'}+Enter`}>
         <span className="mt-2 block">
           <Button className="w-full" disabled={!!blocked || busy} onClick={() => void commit()}>

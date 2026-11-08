@@ -12,12 +12,16 @@ installed, keeps your work on your machine, and asks before it does anything you
 
 - **Repository tabs** with a recent-repositories list, open/clone/init, repository trust prompts for
   Git's `safe.directory` (never added silently).
-- **History** with a virtualised commit graph, branch filter, message/author/path/content search,
+- **History** with a virtualised commit graph, branch filter, message/author/path/code-change search,
   date range, commit details and diffs.
 - **Changes**: stage/unstage files, hunks or individual lines; unified and side-by-side diffs with
   syntax highlighting; image diffs; commit, amend, sign-off, commit templates.
 - **Branches, remotes, tags, stashes** in the sidebar with context menus; fetch/pull/push with
-  progress and cancel; force push only via an explicit `--force-with-lease` confirmation.
+  progress and cancel; force push only via an explicit `--force-with-lease` confirmation pinned to the
+  remote commit you reviewed; a rejected push offers fetch + rebase/merge + push.
+- **Undo** (toolbar, Ctrl/Cmd+Z) for commits, amends, branch and tag changes, checkouts, merges,
+  rebases, cherry-picks, reverts and resets — with a preview, and refused if the repository changed
+  since.
 - **Merge, rebase, interactive rebase** (reorder/squash/fixup/reword/drop), cherry-pick, revert,
   reset with clear warnings.
 - **Conflict workspace** with ours/theirs/both choices per conflict and continue/abort/skip.
@@ -75,6 +79,8 @@ All tests create throwaway repositories in the temp folder and isolate Git confi
 - [Architecture](docs/architecture.md) and [security model](SECURITY.md)
 - [Development guide](docs/development.md)
 - [Feature matrix](docs/product/feature-matrix.md), [roadmap](docs/roadmap.md), [progress](docs/progress.md)
+- [Everyday workflows](docs/workflows.md) (undo, pushing, worktrees, compare)
+- [November 2026 audit and competitor parity report](docs/audit-2026-11.md)
 - [Performance](docs/performance.md), [packaging](docs/packaging.md), [licensing](docs/licensing.md)
 
 ## Contributing

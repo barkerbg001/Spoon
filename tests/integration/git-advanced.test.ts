@@ -99,7 +99,7 @@ describe('remotes', () => {
         },
         noop
       )
-    ).rejects.toMatchObject({ message: expect.stringContaining('remote has commits') })
+    ).rejects.toMatchObject({ code: 'PUSH_REJECTED' })
     // A has not fetched B's commit, so the lease (origin/main) is stale and the force push is refused.
     await expect(
       branches.push(

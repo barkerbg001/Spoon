@@ -96,6 +96,14 @@ export const COMMANDS: Command[] = [
     run: (r) => void A.push(r!)
   },
   {
+    id: 'undo',
+    label: 'Undo last Git operation…',
+    group: 'Repository',
+    shortcut: 'undo',
+    needsRepo: true,
+    run: (r) => void A.undo(r!)
+  },
+  {
     id: 'newBranch',
     label: 'New branch…',
     group: 'Repository',

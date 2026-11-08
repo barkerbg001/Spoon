@@ -28,6 +28,7 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: 'push', label: 'Push', group: 'Repository', default: 'Mod+Shift+U' },
   { id: 'newBranch', label: 'New branch', group: 'Repository', default: 'Mod+B' },
   { id: 'stash', label: 'Stash changes', group: 'Repository', default: 'Mod+Shift+S' },
+  { id: 'undo', label: 'Undo last Git operation', group: 'Repository', default: 'Mod+Z' },
   { id: 'terminal', label: 'Open terminal', group: 'Repository', default: 'Mod+Alt+T' },
   { id: 'find', label: 'Search history', group: 'Views', default: 'Mod+F' },
   { id: 'viewHistory', label: 'Show history', group: 'Views', default: 'Mod+1' },

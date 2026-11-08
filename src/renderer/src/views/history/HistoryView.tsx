@@ -354,6 +354,7 @@ export function HistoryView(): React.JSX.Element {
         <option value="author">Author</option>
         <option value="hash">Hash</option>
         <option value="path">Path</option>
+        <option value="content">Changes (code)</option>
       </Select>
       <div className="relative min-w-0 flex-1">
         <Search className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />

@@ -1,6 +1,6 @@
 # Roadmap
 
-Updated 2026-10-11. Status of individual features lives in the [feature matrix](product/feature-matrix.md);
+Updated 2026-11-07. Status of individual features lives in the [feature matrix](product/feature-matrix.md);
 this page orders what comes next. Items are proposals until a maintainer accepts them.
 
 ## 0.1 — current (done)
@@ -25,7 +25,11 @@ provider implementations (unverified against live services), packaging configura
 
 ## 0.3 — Workflow improvements
 
-- Undo for recent local operations built on the reflog.
+- ~~Undo for recent local operations~~ — shipped 2026-11 (see [audit](audit-2026-11.md)); next: redo and
+  undo for staging, discards and stashes.
+- Conflict prediction before merge/rebase/cherry-pick (`git merge-tree --write-tree`, Git ≥ 2.38).
+- Detect in-progress operations through Git rather than `.git` files, and test reftable repositories.
+- Commit-list editing from the graph (move up/down, squash selected, edit message).
 - Commit graph: column-width preferences, collapsed merge branches, "show only first parent".
 - Blame "ignore whitespace / ignore revisions" and history of a line range (`git log -L`).
 - Multi-repository operations (fetch all open repositories) and repository groups in tabs.

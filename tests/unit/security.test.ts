@@ -118,6 +118,21 @@ describe('classifyGitError', () => {
       1,
       'git push'
     )
-    expect(e.message).toMatch(/Pull/)
+    expect(e.code).toBe('PUSH_REJECTED')
+    expect(e.message).toMatch(/Fetch and integrate/)
+  })
+
+  it('distinguishes a refused force-with-lease from a plain rejection', () => {
+    const e = classifyGitError(
+      ' ! [rejected]        main -> main (stale info)\nerror: failed to push some refs',
+      1,
+      'git push'
+    )
+    expect(e.code).toBe('LEASE_REJECTED')
+  })
+
+  it('explains a diverged fast-forward-only pull', () => {
+    const e = classifyGitError('fatal: Not possible to fast-forward, aborting.', 128, 'git pull')
+    expect(e.code).toBe('DIVERGED')
   })
 })

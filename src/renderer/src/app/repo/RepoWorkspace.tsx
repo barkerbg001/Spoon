@@ -14,7 +14,8 @@ import {
   RefreshCw,
   Settings,
   SquareTerminal,
-  Trash2
+  Trash2,
+  Undo2
 } from 'lucide-react'
 import { call } from '@/lib/api'
 import { toastError } from '@/app/state'
@@ -281,6 +282,13 @@ function Toolbar(): React.JSX.Element {
         badge: count(head?.ahead)
       })}
       <div className="mx-1.5 h-6 w-px bg-border" />
+      {tool('Undo', <Undo2 />, () => void A.undo(r), {
+        shortcut: shortcutLabel('undo'),
+        disabled:
+          r.status?.operation && r.status.operation !== 'none'
+            ? 'Finish or abort the current operation first'
+            : false
+      })}
       {tool('Branch', <GitBranchPlus />, () => void A.createBranch(r), {
         shortcut: shortcutLabel('newBranch'),
         disabled: head?.unborn && 'Create the first commit first'

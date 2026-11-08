@@ -10,7 +10,7 @@ import {
   parseTags,
   parseWorktrees
 } from './parse'
-import { mgit, rgit, type RepoCtx } from './repo'
+import { allowConflicts, mgit, rgit, type RepoCtx } from './repo'
 
 type Progress = (p: OpProgress) => void
 const result = (r: CommandResult): CommandResult => ({
@@ -93,6 +93,14 @@ export async function refsSnapshot(ctx: RepoCtx): Promise<RefsSnapshot> {
       unborn: !head.stdout.trim()
     }
   }
+}
+
+export async function resolveRev(ctx: RepoCtx, rev: string): Promise<string | null> {
+  // rev-parse only learned --end-of-options in Git 2.30; `rev` is validated never to start with "-".
+  const r = await rgit(ctx, ['rev-parse', '--verify', '--quiet', `${rev}^{commit}`], {
+    okCodes: [0, 1, 128]
+  })
+  return r.exitCode === 0 ? r.stdout.trim() || null : null
 }
 
 // Branches ------------------------------------------------------------------
@@ -205,7 +213,11 @@ export async function pull(
 ): Promise<CommandResult> {
   const flag =
     a.strategy === 'rebase' ? '--rebase' : a.strategy === 'ff-only' ? '--ff-only' : '--no-rebase'
-  return result(await mgit(ctx, ['pull', '--progress', flag], { opId: a.opId, onProgress }))
+  // A pull that merges or rebases can stop with conflicts; report that as a stopped operation
+  // (exitCode 1) so the UI opens the conflict workspace instead of showing a generic error.
+  return allowConflicts(ctx, () =>
+    mgit(ctx, ['pull', '--progress', flag], { opId: a.opId, onProgress })
+  )
 }
 
 export async function push(
@@ -214,10 +226,16 @@ export async function push(
   onProgress: Progress
 ): Promise<CommandResult> {
   const args = ['push', '--progress']
-  if (a.setUpstream) args.push('--set-upstream')
-  if (a.forceWithLease) args.push('--force-with-lease')
-  if (a.tags) args.push('--follow-tags')
   const target = a.remoteBranch ?? a.branch
+  if (a.setUpstream) args.push('--set-upstream')
+  if (a.forceWithLease) {
+    // Pin the lease to the commit the user reviewed. A bare --force-with-lease compares against
+    // the remote-tracking ref, which any background fetch silently moves forward.
+    if (a.expectedRemoteOid !== undefined)
+      args.push(`--force-with-lease=refs/heads/${target}:${a.expectedRemoteOid ?? ''}`)
+    else args.push('--force-with-lease')
+  }
+  if (a.tags) args.push('--follow-tags')
   args.push(a.remote, `refs/heads/${a.branch}:refs/heads/${target}`)
   return result(await mgit(ctx, args, { opId: a.opId, onProgress }))
 }

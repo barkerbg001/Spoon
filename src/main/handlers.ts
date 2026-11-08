@@ -24,6 +24,8 @@ import * as branches from './git/branches'
 import * as ops from './git/ops'
 import * as conflicts from './git/conflicts'
 import * as extras from './git/extras'
+import { peekUndo, runUndo, type RestoreMode } from './git/undo'
+import { isRepoLocked, withRepoLock } from './git/lock'
 import { AppStore } from './store'
 import { SecretStore } from './secrets'
 import { RepoWatcher } from './watcher'
@@ -78,6 +80,7 @@ export const MUTATING = new Set<ApiMethod>([
   'stash.apply',
   'stash.drop',
   'reflog.createBranch',
+  'undo.run',
   'conflict.save',
   'conflict.take',
   'conflict.markResolved',
@@ -99,6 +102,36 @@ export const MUTATING = new Set<ApiMethod>([
   'flow.finish',
   'hosting.checkoutPullRequest'
 ])
+
+/**
+ * Operations Spoon can undo (see git/undo.ts), with the label shown to the user and how the
+ * checked-out branch is moved back: "soft" keeps a commit's changes staged; "keep" refuses to
+ * overwrite local changes.
+ */
+export const UNDOABLE: Partial<
+  Record<ApiMethod, (args: Record<string, unknown>) => { label: string; mode: RestoreMode }>
+> = {
+  'commit.create': (a) => ({ label: a['amend'] ? 'Amend commit' : 'Commit', mode: 'soft' }),
+  'branch.create': (a) => ({ label: `Create branch ${String(a['name'])}`, mode: 'keep' }),
+  'branch.checkout': (a) => ({ label: `Check out ${String(a['ref'])}`, mode: 'keep' }),
+  'branch.rename': (a) => ({
+    label: `Rename ${String(a['from'])} to ${String(a['to'])}`,
+    mode: 'keep'
+  }),
+  'branch.delete': (a) => ({ label: `Delete branch ${String(a['name'])}`, mode: 'keep' }),
+  'tag.create': (a) => ({ label: `Create tag ${String(a['name'])}`, mode: 'keep' }),
+  'tag.delete': (a) => ({ label: `Delete tag ${String(a['name'])}`, mode: 'keep' }),
+  'op.merge': (a) => ({ label: `Merge ${String(a['ref'])}`, mode: 'keep' }),
+  'op.rebase': (a) => ({ label: `Rebase onto ${String(a['onto'])}`, mode: 'keep' }),
+  'op.cherryPick': () => ({ label: 'Cherry-pick', mode: 'keep' }),
+  'op.revert': () => ({ label: 'Revert', mode: 'keep' }),
+  'op.reset': (a) => ({
+    label: `Reset (${String(a['mode'])}) to ${String(a['target']).slice(0, 7)}`,
+    mode: a['mode'] === 'soft' ? 'soft' : a['mode'] === 'mixed' ? 'mixed' : 'keep'
+  }),
+  'rebase.interactive': () => ({ label: 'Interactive rebase', mode: 'keep' }),
+  'reflog.createBranch': (a) => ({ label: `Create branch ${String(a['name'])}`, mode: 'keep' })
+}
 
 export class Services {
   readonly store: AppStore
@@ -152,14 +185,45 @@ export class Services {
     this.fetchTimer = null
     const s = this.store.getSettings()
     if (!s.autoFetch) return
-    this.fetchTimer = setInterval(() => {
-      for (const root of this.watchers.keys()) {
-        const ctx = requireRepo(root)
-        git(['fetch', '--all', '--quiet'], { cwd: ctx.root, log: true, timeoutMs: 120_000 })
-          .then(() => this.broadcast('repo.changed', { repo: ctx.root, scope: 'refs' }))
-          .catch(() => undefined)
+    this.fetchTimer = setInterval(() => void this.autoFetchOnce(), s.autoFetchMinutes * 60_000)
+  }
+
+  /**
+   * Background fetch for every open repository. Runs under the same per-repository lock as
+   * user operations (so it never races a push, pull or rebase), skips repositories that are
+   * busy, and fetches each repository once even when several of its worktrees are open.
+   */
+  async autoFetchOnce(): Promise<void> {
+    const seen = new Set<string>()
+    const jobs: Promise<unknown>[] = []
+    for (const root of this.watchers.keys()) {
+      let ctx: RepoCtx
+      try {
+        ctx = requireRepo(root)
+      } catch {
+        continue
       }
-    }, s.autoFetchMinutes * 60_000)
+      const key = ctx.commonDir.toLowerCase()
+      if (seen.has(key) || isRepoLocked(ctx.commonDir)) continue
+      seen.add(key)
+      jobs.push(
+        withRepoLock(ctx.commonDir, () =>
+          git(['fetch', '--all', '--quiet'], { cwd: ctx.root, log: true, timeoutMs: 120_000 })
+        )
+          .then(() => {
+            for (const r of this.watchers.keys()) {
+              try {
+                if (requireRepo(r).commonDir.toLowerCase() === key)
+                  this.broadcast('repo.changed', { repo: r, scope: 'refs' })
+              } catch {
+                /* closed meanwhile */
+              }
+            }
+          })
+          .catch(() => undefined)
+      )
+    }
+    await Promise.all(jobs)
   }
 
   stopAll(): void {
@@ -366,8 +430,10 @@ export function createHandlers(s: Services): Handlers {
     'repo.summary': ({ repo: r }) => getSummary(repo(r)),
     'repo.status': ({ repo: r }) => getStatus(repo(r)),
     'repo.refs': ({ repo: r }) => branches.refsSnapshot(repo(r)),
+    'repo.resolve': ({ repo: r, rev }) => branches.resolveRev(repo(r), rev),
 
     'history.log': (a) => history.log(repo(a.repo), a),
+    'history.remoteContains': ({ repo: r, rev }) => history.remoteContains(repo(r), rev),
     'history.commit': ({ repo: r, hash }) => history.commitDetails(repo(r), hash),
     'history.compareFiles': ({ repo: r, from, to }) => history.compareFiles(repo(r), from, to),
     'history.fileLog': ({ repo: r, path, limit }) => history.fileLog(repo(r), path, limit),
@@ -391,8 +457,8 @@ export function createHandlers(s: Services): Handlers {
     'branch.checkout': ({ repo: r, ref, track }) => branches.checkout(repo(r), ref, track),
     'branch.rename': ({ repo: r, from, to }) => branches.renameBranch(repo(r), from, to),
     'branch.delete': ({ repo: r, name, force }) => branches.deleteBranch(repo(r), name, force),
-    'branch.deleteRemote': ({ repo: r, remote, name }) =>
-      branches.deleteRemoteBranch(repo(r), remote, name),
+    'branch.deleteRemote': ({ repo: r, remote, name, opId: id }) =>
+      branches.deleteRemoteBranch(repo(r), remote, name, id),
     'branch.setUpstream': ({ repo: r, branch, upstream }) =>
       branches.setUpstream(repo(r), branch, upstream),
     'tag.create': (a) => branches.createTag(repo(a.repo), a),
@@ -434,6 +500,8 @@ export function createHandlers(s: Services): Handlers {
       ops.stashApply(repo(r), index, pop, restoreIndex),
     'stash.drop': ({ repo: r, index }) => ops.stashDrop(repo(r), index),
     'stash.files': ({ repo: r, index }) => ops.stashFiles(repo(r), index),
+    'undo.peek': ({ repo: r }) => peekUndo(repo(r)),
+    'undo.run': ({ repo: r }) => runUndo(repo(r)),
     'reflog.createBranch': ({ repo: r, name, hash }) => ops.branchFromReflog(repo(r), name, hash),
 
     'conflict.get': ({ repo: r, path }) => conflicts.getConflict(repo(r), path),
@@ -451,6 +519,7 @@ export function createHandlers(s: Services): Handlers {
     },
     'worktree.remove': ({ repo: r, path, force }) => extras.removeWorktree(repo(r), path, force),
     'worktree.prune': ({ repo: r }) => extras.pruneWorktrees(repo(r)),
+    'worktree.status': ({ repo: r, path }) => extras.worktreeStatus(repo(r), path),
     'submodule.update': (a, call) => extras.submoduleUpdate(repo(a.repo), a, call.progress),
     'submodule.sync': ({ repo: r }) => extras.submoduleSync(repo(r)),
     'submodule.add': (a, call) => extras.submoduleAdd(repo(a.repo), a, call.progress),

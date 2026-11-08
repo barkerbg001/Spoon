@@ -28,7 +28,13 @@ const screenshotDir = process.env['SPOON_SCREENSHOTS']
 const Mod = process.platform === 'darwin' ? 'Meta' : 'Control'
 
 const git = (cwd: string, ...args: string[]): string =>
-  execFileSync('git', args, { cwd, env, encoding: 'utf8' })
+  execFileSync('git', args, {
+    cwd,
+    // Read-only checks must not take index.lock: a `git status` that refreshes the index while
+    // Spoon runs a command makes that command fail (a race in the test, not in the app).
+    env: { ...env, GIT_OPTIONAL_LOCKS: '0' },
+    encoding: 'utf8'
+  })
 
 let seq = 0
 function makeRepo(): string {

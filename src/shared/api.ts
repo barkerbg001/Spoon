@@ -182,6 +182,8 @@ export const api = {
   'repo.summary': m<T.RepoSummary>()(z.object(repo)),
   'repo.status': m<T.RepoStatus>()(z.object(repo)),
   'repo.refs': m<T.RefsSnapshot>()(z.object(repo)),
+  /** Full object id of a revision, or null if it does not resolve. */
+  'repo.resolve': m<string | null>()(z.object({ ...repo, rev: revision })),
 
   // History
   'history.log': m<{ commits: T.Commit[]; hasMore: boolean }>()(
@@ -200,6 +202,8 @@ export const api = {
             .regex(/^[0-9a-fA-F]{4,64}$/)
             .optional(),
           path: relPath.optional(),
+          /** Commits whose diff adds or removes this exact text (git log -S). */
+          content: z.string().min(1).max(500).refine(noNul).optional(),
           since: z
             .string()
             .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -212,6 +216,8 @@ export const api = {
         .optional()
     })
   ),
+  /** Remote-tracking branches (at most 5) that already contain the revision, i.e. it was pushed. */
+  'history.remoteContains': m<string[]>()(z.object({ ...repo, rev: revision })),
   'history.commit': m<T.CommitDetails>()(z.object({ ...repo, hash: revision })),
   'history.compareFiles': m<T.CommitFile[]>()(
     z.object({ ...repo, from: revision, to: revision.nullable() })
@@ -283,7 +289,9 @@ export const api = {
   'branch.checkout': m<void>()(z.object({ ...repo, ref: revision, track: z.boolean().optional() })),
   'branch.rename': m<void>()(z.object({ ...repo, from: refName, to: refName })),
   'branch.delete': m<void>()(z.object({ ...repo, name: refName, force: z.boolean() })),
-  'branch.deleteRemote': m<void>()(z.object({ ...repo, remote: remoteName, name: refName })),
+  'branch.deleteRemote': m<void>()(
+    z.object({ ...repo, remote: remoteName, name: refName, opId: opId.optional() })
+  ),
   'branch.setUpstream': m<void>()(
     z.object({ ...repo, branch: refName, upstream: revision.nullable() })
   ),
@@ -335,6 +343,16 @@ export const api = {
       remoteBranch: refName.optional(),
       setUpstream: z.boolean().default(false),
       forceWithLease: z.boolean().default(false),
+      /**
+       * The remote branch commit the user reviewed before confirming a force push. The lease is
+       * pinned to this value (null = the branch must not exist on the remote), so a background
+       * fetch cannot silently refresh it.
+       */
+      expectedRemoteOid: z
+        .string()
+        .regex(/^[0-9a-f]{40,64}$/)
+        .nullable()
+        .optional(),
       tags: z.boolean().default(false),
       opId
     })
@@ -395,6 +413,8 @@ export const api = {
   ),
   'stash.drop': m<void>()(z.object({ ...repo, index: z.number().int().min(0) })),
   'stash.files': m<T.CommitFile[]>()(z.object({ ...repo, index: z.number().int().min(0) })),
+  'undo.peek': m<T.UndoPreview | null>()(z.object(repo)),
+  'undo.run': m<T.UndoPreview>()(z.object(repo)),
   'reflog.createBranch': m<void>()(z.object({ ...repo, name: refName, hash: revision })),
 
   // Conflicts
@@ -422,6 +442,7 @@ export const api = {
   ),
   'worktree.remove': m<void>()(z.object({ ...repo, path: repoPath, force: z.boolean() })),
   'worktree.prune': m<void>()(z.object(repo)),
+  'worktree.status': m<T.WorktreeStatus>()(z.object({ ...repo, path: repoPath })),
   'submodule.update': m<T.CommandResult>()(
     z.object({
       ...repo,
@@ -580,6 +601,9 @@ export type ErrorCode =
   | 'STALE'
   | 'CONFLICT'
   | 'AUTH'
+  | 'PUSH_REJECTED'
+  | 'LEASE_REJECTED'
+  | 'DIVERGED'
   | 'NETWORK'
   | 'UNSUPPORTED'
   | 'NOT_FOUND'

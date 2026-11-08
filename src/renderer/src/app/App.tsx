@@ -65,6 +65,14 @@ function useGlobalShortcuts(): void {
       if (e.defaultPrevented || e.isComposing) return
       const id = matchShortcut(e)
       if (!id || LOCAL_SHORTCUTS.has(id)) return
+      // Inside text fields Mod+Z keeps its native meaning (undo typing).
+      const t = e.target as HTMLElement | null
+      if (
+        id === 'undo' &&
+        t &&
+        (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))
+      )
+        return
       const modalOpen = document.querySelector('[role="dialog"], [role="alertdialog"]') !== null
       if (modalOpen && id !== 'palette') return
       if (runCommand(id)) e.preventDefault()

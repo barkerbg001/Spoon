@@ -68,20 +68,25 @@ export function classifyGitError(stderr: string, exitCode: number, command: stri
     )
   }
   if (
-    /\[rejected\].*\(fetch first\)|\[rejected\].*\(non-fast-forward\)|Updates were rejected/i.test(
-      s
-    )
+    /Not possible to fast-forward|have diverged|Diverging branches can't be fast-forwarded/i.test(s)
   ) {
     return new AppError(
-      'GIT_FAILED',
-      'The remote has commits you do not have. Pull (or fetch and integrate) before pushing.',
+      'DIVERGED',
+      'Your branch and its upstream have diverged, so a fast-forward is not possible. Pull again with merge or rebase.',
       detail
     )
   }
-  if (/stale info|\(stale info\)/i.test(s)) {
+  if (/\(stale info\)/i.test(s)) {
     return new AppError(
-      'GIT_FAILED',
-      'Force push was refused because the remote branch changed since your last fetch (force-with-lease protection).',
+      'LEASE_REJECTED',
+      'Force push was refused: the remote branch no longer points at the commit you reviewed (force-with-lease protection). Someone pushed in the meantime. Fetch, review their commits, and integrate them before pushing again.',
+      detail
+    )
+  }
+  if (/\[rejected\].*\((fetch first|non-fast-forward)\)|Updates were rejected/i.test(s)) {
+    return new AppError(
+      'PUSH_REJECTED',
+      'The push was rejected because the remote branch has commits you do not have. Fetch and integrate them (rebase or merge), then push again.',
       detail
     )
   }

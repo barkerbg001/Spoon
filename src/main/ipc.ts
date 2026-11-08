@@ -3,7 +3,8 @@ import { api, type ApiEvent, type ApiEvents, type ApiMethod, type ApiResponse } 
 import { AppError, toErrorPayload } from './errors'
 import { requireRepo } from './git/repo'
 import { withRepoLock } from './git/lock'
-import { MUTATING, type CallContext, type Handlers } from './handlers'
+import { MUTATING, UNDOABLE, type CallContext, type Handlers } from './handlers'
+import { recordUndo } from './git/undo'
 
 export const INVOKE_CHANNEL = 'spoon:invoke'
 export const EVENT_CHANNEL = 'spoon:event'
@@ -66,7 +67,12 @@ export function registerIpc(handlers: Handlers, trusted: (frame: WebFrameMain) =
           }
         }
         const handler = handlers[m] as (a: unknown, c: CallContext) => unknown
-        const run = async (): Promise<unknown> => handler(args, call)
+        const undoable = UNDOABLE[m]
+        const run = async (): Promise<unknown> => {
+          if (!undoable || typeof args['repo'] !== 'string') return handler(args, call)
+          const { label, mode } = undoable(args)
+          return recordUndo(requireRepo(args['repo']), label, mode, async () => handler(args, call))
+        }
         const value =
           MUTATING.has(m) && typeof args['repo'] === 'string'
             ? await withRepoLock(requireRepo(args['repo']).commonDir, run)

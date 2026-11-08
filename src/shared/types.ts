@@ -423,3 +423,27 @@ export interface AppInfo {
   git: GitInfo | null
   gitError: string | null
 }
+
+/** The most recent undoable operation in a repository and what undoing it would change. */
+export interface UndoPreview {
+  label: string
+  time: number
+  /** One line per reference change, e.g. "Move main from abc1234 back to def5678" */
+  changes: string[]
+  /** Set when the undo can no longer be applied safely (the repository changed since). */
+  blockedReason: string | null
+}
+
+/** What removing a linked worktree would affect. */
+export interface WorktreeStatus {
+  path: string
+  branch: string | null
+  main: boolean
+  /** The worktree this repository tab is working in */
+  current: boolean
+  locked: boolean
+  /** The folder no longer exists (prunable) */
+  missing: boolean
+  /** Uncommitted changes, one "kind  path" line each */
+  changes: string[]
+}

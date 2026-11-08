@@ -5,7 +5,7 @@ import { call } from '@/lib/api'
 
 export interface HistoryFilters {
   scope: 'all' | 'current'
-  mode: 'message' | 'author' | 'hash' | 'path'
+  mode: 'message' | 'author' | 'hash' | 'path' | 'content'
   query: string
   since: string
   until: string
@@ -62,6 +62,7 @@ export function useHistory(
       author?: string
       hash?: string
       path?: string
+      content?: string
       since?: string
       until?: string
     } = {}
@@ -69,6 +70,7 @@ export function useHistory(
     if (q && filters.mode === 'author') s.author = q
     if (q && filters.mode === 'hash') s.hash = /^[0-9a-fA-F]{4,64}$/.test(q) ? q : '0000'
     if (q && filters.mode === 'path') s.path = q.replace(/\\/g, '/').replace(/^\/+/, '')
+    if (q && filters.mode === 'content') s.content = q
     if (filters.since) s.since = filters.since
     if (filters.until) s.until = filters.until
     return Object.keys(s).length ? s : undefined

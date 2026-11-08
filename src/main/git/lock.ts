@@ -19,6 +19,11 @@ export async function withRepoLock<T>(key: string, fn: () => Promise<T>): Promis
   }
 }
 
+/** True while a mutating operation holds (or waits for) the repository lock. */
+export function isRepoLocked(key: string): boolean {
+  return tails.has(key.toLowerCase())
+}
+
 /** Limits the number of concurrently running subprocesses. */
 export class Semaphore {
   private active = 0

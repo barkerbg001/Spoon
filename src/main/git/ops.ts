@@ -1,11 +1,10 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ApiArgs } from '@shared/api'
 import type { Commit, CommandResult, CommitFile, RebaseTodoItem } from '@shared/types'
 import { AppError } from '../errors'
 import { LOG_FORMAT, applyNumstat, parseLog, parseNameStatus } from './parse'
-import { detectOperation, getStatus, mgit, rgit, type RepoCtx } from './repo'
+import { allowConflicts, detectOperation, getStatus, mgit, rgit, type RepoCtx } from './repo'
 import { getGitInfo } from './runner'
 
 const ok = (r: CommandResult): CommandResult => ({
@@ -13,30 +12,6 @@ const ok = (r: CommandResult): CommandResult => ({
   stderr: r.stderr,
   exitCode: r.exitCode
 })
-
-/**
- * Run an operation that may legitimately stop with conflicts. A stop with
- * conflicts is returned as a result (exitCode 1) instead of an error so the UI
- * can switch to the conflict workspace.
- */
-async function allowConflicts(
-  ctx: RepoCtx,
-  fn: () => Promise<CommandResult>
-): Promise<CommandResult> {
-  try {
-    return ok(await fn())
-  } catch (e) {
-    if (!(e instanceof AppError) || e.code === 'CANCELLED') throw e
-    const status = await getStatus(ctx)
-    if (
-      status.conflicted.length > 0 ||
-      (status.operation !== 'none' && status.operation !== 'bisect')
-    ) {
-      return { stdout: '', stderr: e.detail ?? e.message, exitCode: 1 }
-    }
-    throw e
-  }
-}
 
 async function isMerge(ctx: RepoCtx, rev: string): Promise<boolean> {
   const r = await rgit(ctx, ['rev-list', '--parents', '-n', '1', '--end-of-options', rev])
@@ -129,7 +104,12 @@ export async function control(
       )
     }
   }
-  return allowConflicts(ctx, () => mgit(ctx, [cmd, `--${action}`]))
+  try {
+    return await allowConflicts(ctx, () => mgit(ctx, [cmd, `--${action}`]))
+  } finally {
+    if (detectOperation(ctx).operation === 'none')
+      await rm(rebaseScratch(ctx), { recursive: true, force: true })
+  }
 }
 
 export async function previewCommits(
@@ -153,6 +133,8 @@ export async function previewCommits(
 }
 
 // Interactive rebase -----------------------------------------------------------
+
+const rebaseScratch = (ctx: RepoCtx): string => join(ctx.gitDir, 'spoon-rebase')
 
 const quoteForSh = (p: string): string => `"${p.replace(/\\/g, '/').replace(/(["$`\\])/g, '\\$1')}"`
 
@@ -197,7 +179,11 @@ export async function interactiveRebase(
       'The first commit cannot be squashed or fixed up: there is no earlier commit in the list to combine it with.'
     )
   }
-  const dir = await mkdtemp(join(tmpdir(), 'spoon-rebase-'))
+  // Message files live in the git directory so they survive a stop (the "exec" lines need them
+  // after a conflict is resolved) and are removed once the rebase finishes or is aborted.
+  const dir = rebaseScratch(ctx)
+  await rm(dir, { recursive: true, force: true })
+  await mkdir(dir, { recursive: true })
   try {
     const msgPath = (i: number): string => join(dir, `msg-${i}.txt`)
     for (const [i, it] of a.todo.entries()) {
